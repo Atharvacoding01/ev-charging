@@ -1,10 +1,11 @@
+// mongo.js
 const { MongoClient } = require("mongodb");
-require("dotenv").config();
+require("dotenv").config(); // Load env vars from .env
 
 const uri = process.env.MONGO_URI;
 
 if (!uri) {
-  throw new Error("❌ MONGO_URI not defined in .env");
+  throw new Error("❌ MONGO_URI not defined in environment variables");
 }
 
 const client = new MongoClient(uri, {
@@ -16,27 +17,20 @@ let cachedDb = null;
 
 async function connectToMongo() {
   if (cachedDb) {
-    return cachedDb;
+    return cachedDb; // ✅ Reuse existing connection
   }
 
   try {
     await client.connect();
     console.log("✅ Connected to MongoDB Atlas");
 
-    // Automatically extract DB name from URI
-    const url = new URL(uri);
-    const dbName = url.pathname.replace('/', '').split('?')[0];
-
-    if (!dbName) {
-      throw new Error("❌ Could not extract DB name from URI");
-    }
-
+    const dbName = uri.split('/').pop().split('?')[0]; // Extract DB name from URI
     const db = client.db(dbName);
+    
     cachedDb = db;
-
     return db;
   } catch (error) {
-    console.error("❌ Failed to connect to MongoDB:", error.message);
+    console.error("❌ MongoDB connection failed:", error);
     throw error;
   }
 }
