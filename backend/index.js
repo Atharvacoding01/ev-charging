@@ -33,22 +33,30 @@ connectDB().then((db) => {
   });
 
   // ✅ Save new order WITH user details (including phone)
-  app.post('/api/save-order', async (req, res) => {
-    try {
-      const { charger, timestamp, firstName, lastName, email, phone } = req.body;
+ app.post('/api/save-order', async (req, res) => {
+  try {
+    const { charger, timestamp } = req.body;
 
-      if (!charger || !charger.chargerId || !charger.label || !phone) {
-        return res.status(400).json({ error: "Missing required fields" });
-      }
+    if (!charger || !charger.chargerId || !charger.label) {
+      return res.status(400).json({ error: "Missing charger selection" });
+    }
 
-      const result = await orders.insertOne({
-        charger,
-        timestamp: timestamp || new Date().toISOString(),
-        firstName,
-        lastName,
-        email,
-        phone
-      });
+    const result = await orders.insertOne({
+      charger,
+      timestamp: timestamp || new Date().toISOString(),
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: ""
+    });
+
+    res.status(200).json({ message: "Order saved", id: result.insertedId });
+  } catch (err) {
+    console.error("❌ Failed to save order:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
       res.status(200).json({ message: "Order saved", id: result.insertedId });
     } catch (err) {
