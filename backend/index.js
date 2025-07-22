@@ -30,25 +30,26 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Save new order with selected charger (initial placeholder user info)
+  // ✅ Save new order with selected charger (minimal info allowed)
   app.post('/api/save-order', async (req, res) => {
     try {
       const { firstName, lastName, email, phone, charger, timestamp } = req.body;
 
-      if (!firstName || !lastName || !email || !phone || !charger) {
-        return res.status(400).json({ error: "Missing required fields" });
+      if (!charger || !charger.chargerId || !charger.label) {
+        return res.status(400).json({ error: "Missing charger information" });
       }
 
       const result = await orders.insertOne({
-        firstName,
-        lastName,
-        email,
-        phone,
+        firstName: firstName || "Unknown",
+        lastName: lastName || "Unknown",
+        email: email || "Unknown",
+        phone: phone || "Unknown",
         charger,
         timestamp: timestamp || new Date().toISOString()
       });
 
       res.status(200).json({ message: "Order saved", id: result.insertedId });
+
     } catch (err) {
       console.error("❌ Failed to save order:", err);
       res.status(500).json({ error: "Internal server error" });
