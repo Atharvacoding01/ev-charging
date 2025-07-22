@@ -1,4 +1,5 @@
 // ✅ BACKEND CODE (server.js)
+
 const express = require('express');
 const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
@@ -31,7 +32,7 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Save new order (charger only at this point)
+  // ✅ Save new order
   app.post('/api/save-order', async (req, res) => {
     try {
       const { charger, timestamp } = req.body;
@@ -78,7 +79,7 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Update order with user details
+  // ✅ Update order
   app.patch('/api/update-order/:id', async (req, res) => {
     try {
       const id = req.params.id;
