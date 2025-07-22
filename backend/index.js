@@ -1,5 +1,4 @@
 // ✅ BACKEND CODE (server.js)
-
 const express = require('express');
 const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
@@ -32,31 +31,23 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Save new order WITH user details (including phone)
- app.post('/api/save-order', async (req, res) => {
-  try {
-    const { charger, timestamp } = req.body;
+  // ✅ Save new order (charger only at this point)
+  app.post('/api/save-order', async (req, res) => {
+    try {
+      const { charger, timestamp } = req.body;
 
-    if (!charger || !charger.chargerId || !charger.label) {
-      return res.status(400).json({ error: "Missing charger selection" });
-    }
+      if (!charger || !charger.chargerId || !charger.label) {
+        return res.status(400).json({ error: "Missing charger selection" });
+      }
 
-    const result = await orders.insertOne({
-      charger,
-      timestamp: timestamp || new Date().toISOString(),
-      firstName: "",
-      lastName: "",
-      email: "",
-      phone: ""
-    });
-
-    res.status(200).json({ message: "Order saved", id: result.insertedId });
-  } catch (err) {
-    console.error("❌ Failed to save order:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
+      const result = await orders.insertOne({
+        charger,
+        timestamp: timestamp || new Date().toISOString(),
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: ""
+      });
 
       res.status(200).json({ message: "Order saved", id: result.insertedId });
     } catch (err) {
@@ -87,7 +78,7 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Update order
+  // ✅ Update order with user details
   app.patch('/api/update-order/:id', async (req, res) => {
     try {
       const id = req.params.id;
