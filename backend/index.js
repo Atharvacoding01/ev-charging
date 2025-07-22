@@ -1,3 +1,5 @@
+// ✅ BACKEND CODE (server.js)
+
 const express = require('express');
 const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
@@ -30,18 +32,22 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Save new order (ONLY charger info initially)
+  // ✅ Save new order WITH user details (including phone)
   app.post('/api/save-order', async (req, res) => {
     try {
-      const { charger, timestamp } = req.body;
+      const { charger, timestamp, firstName, lastName, email, phone } = req.body;
 
-      if (!charger || !charger.chargerId || !charger.label) {
-        return res.status(400).json({ error: "Missing charger information" });
+      if (!charger || !charger.chargerId || !charger.label || !phone) {
+        return res.status(400).json({ error: "Missing required fields" });
       }
 
       const result = await orders.insertOne({
         charger,
-        timestamp: timestamp || new Date().toISOString()
+        timestamp: timestamp || new Date().toISOString(),
+        firstName,
+        lastName,
+        email,
+        phone
       });
 
       res.status(200).json({ message: "Order saved", id: result.insertedId });
@@ -51,7 +57,7 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Get order by ID (used on payment page)
+  // ✅ Get order by ID
   app.get('/api/get-order/:id', async (req, res) => {
     try {
       const id = req.params.id;
@@ -73,7 +79,7 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Update order with user data on payment page
+  // ✅ Update order
   app.patch('/api/update-order/:id', async (req, res) => {
     try {
       const id = req.params.id;
