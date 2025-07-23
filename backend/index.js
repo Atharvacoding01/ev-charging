@@ -79,48 +79,39 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Update order
   // ✅ Update order AND preserve existing charger
-app.patch('/api/update-order/:id', async (req, res) => {
-  try {
-    const id = req.params.id;
-    const { firstName, lastName, email, phone } = req.body;
+  app.patch('/api/update-order/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { firstName, lastName, email, phone } = req.body;
 
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "Invalid ID format" });
-    }
-
-    if (!firstName || !lastName || !email || !phone) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    // 🔍 Fetch existing order to make sure we keep the charger
-    const existingOrder = await orders.findOne({ _id: new ObjectId(id) });
-
-    if (!existingOrder) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-
-    const result = await orders.updateOne(
-      { _id: new ObjectId(id) },
-      {
-        $set: {
-          firstName,
-          lastName,
-          email,
-          phone,
-          charger: existingOrder.charger || null, // ✅ ensure charger is not lost
-        }
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "Invalid ID format" });
       }
-    );
 
-    res.json({ message: "Order updated", result });
-  } catch (err) {
-    console.error("❌ Failed to update order:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+      if (!firstName || !lastName || !email || !phone) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
 
+      // 🔍 Fetch existing order to keep charger
+      const existingOrder = await orders.findOne({ _id: new ObjectId(id) });
+
+      if (!existingOrder) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      const result = await orders.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            firstName,
+            lastName,
+            email,
+            phone,
+            charger: existingOrder.charger || null
+          }
+        }
+      );
 
       res.json({ message: "Order updated", result });
     } catch (err) {
