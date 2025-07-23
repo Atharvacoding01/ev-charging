@@ -79,46 +79,52 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Update order AND preserve existing charger
-  app.patch('/api/update-order/:id', async (req, res) => {
-    try {
-      const id = req.params.id;
-      const { firstName, lastName, email, phone } = req.body;
+// ✅ Update order AND preserve existing charger
+app.patch('/api/update-order/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { firstName, lastName, email, phone } = req.body;
 
-      if (!ObjectId.isValid(id)) {
-        return res.status(400).json({ error: "Invalid ID format" });
-      }
+    // ✅ Log request body for debugging
+    console.log("🔁 Incoming update:", req.body);
 
-      if (!firstName || !lastName || !email || !phone) {
-        return res.status(400).json({ error: "Missing required fields" });
-      }
-
-      // 🔍 Fetch existing order to keep charger
-      const existingOrder = await orders.findOne({ _id: new ObjectId(id) });
-
-      if (!existingOrder) {
-        return res.status(404).json({ error: "Order not found" });
-      }
-
-      const result = await orders.updateOne(
-        { _id: new ObjectId(id) },
-        {
-          $set: {
-            firstName,
-            lastName,
-            email,
-            phone,
-            charger: existingOrder.charger || null
-          }
-        }
-      );
-
-      res.json({ message: "Order updated", result });
-    } catch (err) {
-      console.error("❌ Failed to update order:", err);
-      res.status(500).json({ error: "Internal server error" });
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid ID format" });
     }
-  });
+
+    // ✅ Validate input (reject if empty or not string)
+    if ([firstName, lastName, email, phone].some(field => typeof field !== "string" || field.trim() === "")) {
+      return res.status(400).json({ error: "Missing or invalid fields" });
+    }
+
+    // ✅ Fetch existing order
+    const existingOrder = await orders.findOne({ _id: new ObjectId(id) });
+
+    if (!existingOrder) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // ✅ Update order
+    const result = await orders.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.trim(),
+          phone: phone.trim(),
+          charger: existingOrder.charger || null
+        }
+      }
+    );
+
+    res.json({ message: "Order updated", result });
+  } catch (err) {
+    console.error("❌ Failed to update order:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 }).catch((err) => {
   console.error("❌ Failed to connect to MongoDB:", err);
