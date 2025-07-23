@@ -80,30 +80,47 @@ connectDB().then((db) => {
   });
 
   // ✅ Update order
-  app.patch('/api/update-order/:id', async (req, res) => {
-    try {
-      const id = req.params.id;
-      const { firstName, lastName, email, phone } = req.body;
+  // ✅ Update order AND preserve existing charger
+app.patch('/api/update-order/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { firstName, lastName, email, phone } = req.body;
 
-      if (!ObjectId.isValid(id)) {
-        return res.status(400).json({ error: "Invalid ID format" });
-      }
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid ID format" });
+    }
 
-      if (!firstName || !lastName || !email || !phone) {
-        return res.status(400).json({ error: "Missing required fields" });
-      }
+    if (!firstName || !lastName || !email || !phone) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
 
-      const result = await orders.updateOne(
-        { _id: new ObjectId(id) },
-        {
-          $set: {
-            firstName,
-            lastName,
-            email,
-            phone
-          }
+    // 🔍 Fetch existing order to make sure we keep the charger
+    const existingOrder = await orders.findOne({ _id: new ObjectId(id) });
+
+    if (!existingOrder) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    const result = await orders.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          firstName,
+          lastName,
+          email,
+          phone,
+          charger: existingOrder.charger || null, // ✅ ensure charger is not lost
         }
-      );
+      }
+    );
+
+    res.json({ message: "Order updated", result });
+  } catch (err) {
+    console.error("❌ Failed to update order:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
       res.json({ message: "Order updated", result });
     } catch (err) {
