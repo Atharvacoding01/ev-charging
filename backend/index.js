@@ -1,5 +1,3 @@
-// ✅ BACKEND CODE (server.js)
-
 const express = require('express');
 const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
@@ -34,16 +32,6 @@ connectDB().then((db) => {
         return res.status(400).json({ error: "Missing charger info" });
       }
 
-      // Reserve charger
-      const updated = await chargers.updateOne(
-        { chargerId: charger.chargerId },
-        { $set: { reserved: true } }
-      );
-
-      if (updated.modifiedCount === 0) {
-        return res.status(400).json({ error: "Charger may already be reserved" });
-      }
-
       const result = await orders.insertOne({
         charger,
         timestamp: timestamp || new Date().toISOString(),
@@ -54,30 +42,6 @@ connectDB().then((db) => {
     } catch (err) {
       console.error("❌ Save order:", err);
       res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  app.post('/api/release-charger', async (req, res) => {
-    try {
-      const { chargerId } = req.body;
-
-      if (!chargerId) {
-        return res.status(400).json({ error: "Missing chargerId" });
-      }
-
-      const result = await chargers.updateOne(
-        { chargerId },
-        { $set: { reserved: false } }
-      );
-
-      if (result.modifiedCount === 0) {
-        return res.status(404).json({ error: "Charger not found or already released" });
-      }
-
-      res.json({ message: "Charger released" });
-    } catch (err) {
-      console.error("❌ Release charger:", err);
-      res.status(500).json({ error: "Internal error" });
     }
   });
 
@@ -135,6 +99,7 @@ connectDB().then((db) => {
       res.status(500).json({ error: "Internal server error" });
     }
   });
+
 }).catch((err) => {
   console.error("❌ MongoDB connection failed:", err);
 });
