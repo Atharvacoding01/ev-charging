@@ -32,30 +32,41 @@ connectDB().then((db) => {
     }
   });
 
-  // ✅ Save new order
-  app.post('/api/save-order', async (req, res) => {
-    try {
-      const { charger, timestamp } = req.body;
+  // ✅ Save new order AND mark charger as reserved
+app.post('/api/save-order', async (req, res) => {
+  try {
+    const { charger, timestamp } = req.body;
 
-      if (!charger || !charger.chargerId || !charger.label) {
-        return res.status(400).json({ error: "Missing charger selection" });
-      }
-
-      const result = await orders.insertOne({
-        charger,
-        timestamp: timestamp || new Date().toISOString(),
-        firstName: "",
-        lastName: "",
-        email: "",
-        phone: ""
-      });
-
-      res.status(200).json({ message: "Order saved", id: result.insertedId });
-    } catch (err) {
-      console.error("❌ Failed to save order:", err);
-      res.status(500).json({ error: "Internal server error" });
+    if (!charger || !charger.chargerId || !charger.label) {
+      return res.status(400).json({ error: "Missing charger selection" });
     }
-  });
+
+    // ✅ Reserve the charger
+    const updated = await chargers.updateOne(
+      { chargerId: charger.chargerId },
+      { $set: { reserved: true } }
+    );
+
+    if (updated.modifiedCount === 0) {
+      return res.status(400).json({ error: "Failed to reserve charger. It may already be reserved." });
+    }
+
+    // ✅ Save the order
+    const result = await orders.insertOne({
+      charger,
+      timestamp: timestamp || new Date().toISOString(),
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: ""
+    });
+
+    res.status(200).json({ message: "Order saved", id: result.insertedId });
+  } catch (err) {
+    console.error("❌ Failed to save order:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
   // ✅ Get order by ID
   app.get('/api/get-order/:id', async (req, res) => {
