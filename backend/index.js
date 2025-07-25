@@ -110,6 +110,7 @@
 
 
 
+// ✅ BACKEND (server.js)
 const express = require('express');
 const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
@@ -126,7 +127,6 @@ connectDB().then((db) => {
 
   app.get('/', (req, res) => res.send('🚀 Backend running!'));
 
-  // Get available chargers
   app.get('/api/chargers', async (req, res) => {
     try {
       const all = await chargers.find({}).toArray();
@@ -136,89 +136,83 @@ connectDB().then((db) => {
     }
   });
 
-  // Save pre-order with charger only
-  app.post('/api/save-preorder', async (req, res) => {
+  app.post('/api/save-order', async (req, res) => {
     try {
       const { charger, timestamp } = req.body;
-      if (!charger || !charger.chargerId) {
-        return res.status(400).json({ error: "Missing charger info" });
-      }
+      if (!charger?.chargerId) return res.status(400).json({ error: "Missing charger info" });
 
-      const result = await orders.insertOne({
-        charger,
-        timestamp: timestamp || new Date().toISOString(),
-        paid: false
-      });
+      const updated = await chargers.updateOne(
+        { chargerId: charger.chargerId },
+        { $set: { reserved: true } }
+      );
+      if (updated.modifiedCount === 0) return res.status(400).json({ error: "Already reserved" });
 
-      res.status(200).json({ message: "Pre-order saved", id: result.insertedId });
+      const result = await orders.insertOne({ charger, timestamp, paid: false });
+      res.status(200).json({ message: "Order saved", id: result.insertedId });
     } catch (err) {
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
-  // Update user info after payment screen
   app.patch('/api/update-order/:id', async (req, res) => {
     try {
       const id = req.params.id;
+      if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid ID" });
+
       const { firstName, lastName, email, phone } = req.body;
-
-      if (!ObjectId.isValid(id)) {
-        return res.status(400).json({ error: "Invalid ID format" });
-      }
-
-      const result = await orders.updateOne(
-        { _id: new ObjectId(id) },
-        {
-          $set: {
-            firstName, lastName, email, phone,
-            paid: true
-          }
-        }
-      );
+      const updateFields = {
+        firstName: firstName?.trim(),
+        lastName: lastName?.trim(),
+        email: email?.trim(),
+        phone: phone?.trim(),
+        paid: true
+      };
+      const result = await orders.updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
       res.json({ message: "Order updated", result });
     } catch (err) {
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Internal error" });
     }
   });
 
-  // Get order
   app.get('/api/get-order/:id', async (req, res) => {
     try {
       const id = req.params.id;
+      if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid ID format" });
       const order = await orders.findOne({ _id: new ObjectId(id) });
       if (!order) return res.status(404).json({ error: "Order not found" });
       res.json(order);
     } catch (err) {
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Internal error" });
     }
   });
 
-  // Save charging session to chargingStatus table
   app.post('/api/charging-status', async (req, res) => {
     try {
       const { orderId, startTime, durationSeconds, amountPaid, powerKW } = req.body;
+      if (!orderId || !startTime) return res.status(400).json({ error: "Missing data" });
 
-      if (!ObjectId.isValid(orderId)) {
-        return res.status(400).json({ error: "Invalid orderId" });
-      }
+      const order = await orders.findOne({ _id: new ObjectId(orderId) });
+      if (!order) return res.status(404).json({ error: "Order not found" });
 
       const result = await chargingStatus.insertOne({
         orderId: new ObjectId(orderId),
         startTime,
-        endTime: new Date().toISOString(),
         durationSeconds,
         amountPaid,
-        powerDeliveredKW: powerKW
+        powerKW,
+        userPhone: order.phone,
+        userEmail: order.email,
+        userName: `${order.firstName} ${order.lastName}`,
+        charger: order.charger || null
       });
 
-      res.status(200).json({ message: "Charging session saved", id: result.insertedId });
+      res.status(200).json({ message: "Charging status saved", id: result.insertedId });
     } catch (err) {
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Internal error" });
     }
   });
 
-}).catch(console.error);
+}).catch((err) => console.error("❌ MongoDB connection failed:", err));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
