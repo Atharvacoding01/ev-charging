@@ -712,9 +712,6 @@
 
 
 
-
-
-
 const express = require('express');
 const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
@@ -842,7 +839,15 @@ connectDB().then((db) => {
         return res.status(404).json({ error: "Order not found" });
       }
 
-      console.log(`✅ Order retrieved: ${id}, Status: ${order.status}, Paid: ${order.paid}, PaymentStatus: ${order.paymentStatus}`);
+      // Enhanced logging for debugging payment status issues
+      console.log(`✅ Order retrieved: ${id}`, {
+        status: order.status,
+        paid: order.paid,
+        paymentStatus: order.paymentStatus,
+        molliePaymentId: order.molliePaymentId,
+        paidAt: order.paidAt
+      });
+
       res.json(order);
     } catch (err) {
       console.error('❌ Error fetching order:', err);
@@ -960,7 +965,11 @@ connectDB().then((db) => {
         );
 
         if (result.matchedCount > 0) {
-          console.log(`✅ Order ${orderId} updated with payment status: ${paymentData.status}`);
+          console.log(`✅ Order ${orderId} updated with payment status: ${paymentData.status}`, {
+            paid: updateData.paid,
+            paymentStatus: updateData.paymentStatus,
+            status: updateData.status
+          });
         } else {
           console.error(`❌ Order ${orderId} not found for payment update`);
         }
@@ -972,6 +981,139 @@ connectDB().then((db) => {
     } catch (err) {
       console.error("❌ Mollie webhook processing failed:", err);
       res.status(500).json({ error: "Webhook processing failed" });
+    }
+  });
+
+  // NEW: Direct Mollie payment verification endpoint
+  app.get('/api/verify-mollie-payment/:paymentId', async (req, res) => {
+    try {
+      const { paymentId } = req.params;
+      
+      console.log("🔍 Direct Mollie verification requested for payment:", paymentId);
+      
+      if (!paymentId) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Payment ID is required' 
+        });
+      }
+      
+      const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+      
+      // Verify payment directly with Mollie API
+      const mollieResponse = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${MOLLIE_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!mollieResponse.ok) {
+        console.error("❌ Mollie API error:", mollieResponse.status);
+        const errorText = await mollieResponse.text();
+        return res.status(mollieResponse.status).json({ 
+          success: false, 
+          error: `Mollie API error: ${errorText}` 
+        });
+      }
+      
+      const paymentData = await mollieResponse.json();
+      console.log("📋 Mollie payment data:", {
+        id: paymentData.id,
+        status: paymentData.status,
+        amount: paymentData.amount
+      });
+      
+      const isPaid = paymentData.status === 'paid';
+      
+      // If payment is confirmed as paid, update our database
+      if (isPaid && paymentData.metadata && paymentData.metadata.orderId) {
+        try {
+          console.log("✅ Payment confirmed paid, updating database...");
+          
+          const updateData = {
+            paid: true,
+            paymentStatus: 'paid',
+            status: 'paid',
+            paidAt: paymentData.paidAt ? new Date(paymentData.paidAt) : new Date(),
+            mollieDirectVerifiedAt: new Date(),
+            updatedAt: new Date()
+          };
+          
+          const updateResult = await orders.updateOne(
+            { _id: new ObjectId(paymentData.metadata.orderId) },
+            { $set: updateData }
+          );
+          
+          console.log("📋 Database update result:", {
+            matchedCount: updateResult.matchedCount,
+            modifiedCount: updateResult.modifiedCount
+          });
+          
+        } catch (dbError) {
+          console.error("❌ Failed to update database:", dbError);
+          // Don't fail the verification if DB update fails
+        }
+      }
+      
+      res.json({
+        success: true,
+        payment: {
+          id: paymentData.id,
+          status: paymentData.status,
+          amount: paymentData.amount,
+          description: paymentData.description,
+          createdAt: paymentData.createdAt,
+          paidAt: paymentData.paidAt
+        },
+        isPaid: isPaid,
+        status: paymentData.status
+      });
+      
+    } catch (error) {
+      console.error("❌ Direct Mollie verification error:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Internal server error during payment verification' 
+      });
+    }
+  });
+
+  // NEW: Manual payment status update endpoint (for testing/debugging)
+  app.post('/api/update-payment-status/:orderId', async (req, res) => {
+    try {
+      const orderId = req.params.orderId;
+      const { paymentStatus, paid } = req.body;
+      
+      if (!ObjectId.isValid(orderId)) {
+        return res.status(400).json({ error: "Invalid order ID" });
+      }
+      
+      const updateData = {
+        paid: paid === true || paymentStatus === 'paid',
+        paymentStatus: paymentStatus || 'paid',
+        status: paymentStatus === 'paid' ? 'paid' : paymentStatus,
+        paidAt: (paid === true || paymentStatus === 'paid') ? new Date() : null,
+        manuallyUpdatedAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      const result = await orders.updateOne(
+        { _id: new ObjectId(orderId) },
+        { $set: updateData }
+      );
+      
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+      
+      console.log(`✅ Manual payment status update for order: ${orderId}`, updateData);
+      res.json({ message: "Payment status updated", updateData });
+      
+    } catch (error) {
+      console.error("❌ Error updating payment status:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -988,17 +1130,33 @@ connectDB().then((db) => {
         return res.status(404).json({ error: "Order not found" });
       }
 
-      // STRICT CHECK: Only allow charging if payment is confirmed
+      // ENHANCED PAYMENT CHECK: More flexible status checking
       const isPaymentConfirmed = order.paid === true || 
                                 order.paymentStatus === 'paid' || 
                                 order.status === 'paid';
 
+      console.log(`🔍 Charging start request for order: ${id}`, {
+        paid: order.paid,
+        paymentStatus: order.paymentStatus,
+        status: order.status,
+        isPaymentConfirmed: isPaymentConfirmed
+      });
+
       if (!isPaymentConfirmed) {
-        console.error(`❌ Charging start denied - Payment not confirmed. Order: ${id}, Status: ${order.status}, Paid: ${order.paid}, PaymentStatus: ${order.paymentStatus}`);
+        console.error(`❌ Charging start denied - Payment not confirmed. Order: ${id}`, {
+          status: order.status,
+          paid: order.paid,
+          paymentStatus: order.paymentStatus
+        });
         return res.status(400).json({ 
           error: "Payment not confirmed", 
           currentStatus: order.paymentStatus || order.status,
-          paid: order.paid 
+          paid: order.paid,
+          debug: {
+            paid: order.paid,
+            paymentStatus: order.paymentStatus,
+            status: order.status
+          }
         });
       }
 
