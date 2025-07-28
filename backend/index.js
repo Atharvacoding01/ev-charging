@@ -110,7 +110,7 @@
 
 
 
-// ===== 5. BACKEND SERVER (server.js) =====
+// ===== ENHANCED BACKEND SERVER (server.js) =====
 const express = require('express');
 const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
@@ -202,10 +202,12 @@ connectDB().then((db) => {
         phone: phone.trim(),
         timestamp: timestamp || new Date().toISOString(),
         paid: false,
+        paymentStatus: 'pending', // ✅ Initialize with pending
+        status: 'pending', // ✅ Initialize with pending
         chargingStarted: false,
         chargingCompleted: false,
         createdAt: new Date(),
-        status: 'pending'
+        updatedAt: new Date()
       };
 
       const result = await orders.insertOne(orderData);
@@ -218,6 +220,50 @@ connectDB().then((db) => {
 
     } catch (err) {
       console.error('❌ Error saving order:', err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ✅ NEW: Enhanced payment creation tracking
+  app.post('/api/payment-created', async (req, res) => {
+    try {
+      const { orderId, molliePaymentId, paymentStatus, amount, customerInfo, redirectUrl } = req.body;
+      
+      console.log('📤 POST /api/payment-created - Payment initiated:', {
+        orderId,
+        molliePaymentId,
+        paymentStatus
+      });
+
+      if (!orderId || !ObjectId.isValid(orderId)) {
+        console.error("❌ Invalid order ID:", orderId);
+        return res.status(400).json({ error: "Invalid order ID" });
+      }
+
+      const updateData = {
+        molliePaymentId: molliePaymentId,
+        paymentStatus: paymentStatus || 'open',
+        paymentAmount: amount,
+        paymentInitiatedAt: new Date(),
+        redirectUrl: redirectUrl,
+        updatedAt: new Date()
+      };
+
+      const result = await orders.updateOne(
+        { _id: new ObjectId(orderId) },
+        { $set: updateData }
+      );
+
+      if (result.matchedCount === 0) {
+        console.error("❌ Order not found for payment creation:", orderId);
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      console.log('✅ Order updated with payment info:', orderId);
+      res.json({ message: "Payment info saved" });
+
+    } catch (err) {
+      console.error('❌ Error saving payment creation:', err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -240,7 +286,13 @@ connectDB().then((db) => {
         return res.status(404).json({ error: "Order not found" });
       }
 
-      console.log("✅ Order found:", order._id);
+      console.log("✅ Order found:", {
+        id: order._id,
+        paid: order.paid,
+        paymentStatus: order.paymentStatus,
+        status: order.status
+      });
+      
       res.json(order);
 
     } catch (err) {
@@ -249,7 +301,99 @@ connectDB().then((db) => {
     }
   });
 
-  // Payment webhook
+  // ✅ ENHANCED: Mollie webhook endpoint with faster processing
+  app.post('/api/mollie-webhook', async (req, res) => {
+    try {
+      const { id: paymentId } = req.body;
+      
+      console.log('🔔 Mollie webhook received for payment:', paymentId);
+      
+      if (!paymentId) {
+        console.error("❌ Missing payment ID in webhook");
+        return res.status(400).json({ error: "Missing payment ID" });
+      }
+
+      // Get payment details from Mollie
+      const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+      const fetch = require('node-fetch');
+      
+      const response = await fetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${MOLLIE_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      if (!response.ok) {
+        console.error("❌ Mollie API error in webhook:", response.statusText);
+        throw new Error(`Mollie API error: ${response.statusText}`);
+      }
+
+      const paymentData = await response.json();
+      console.log('💳 Payment data from Mollie:', {
+        id: paymentData.id,
+        status: paymentData.status,
+        orderId: paymentData.metadata?.orderId
+      });
+      
+      if (paymentData.metadata && paymentData.metadata.orderId) {
+        const orderId = paymentData.metadata.orderId;
+        
+        // ✅ CRITICAL FIX: Enhanced status mapping
+        const isPaid = paymentData.status === 'paid';
+        const isFailed = ['failed', 'canceled', 'cancelled', 'expired'].includes(paymentData.status);
+        
+        const updateData = {
+          paid: isPaid,
+          paymentStatus: paymentData.status,
+          paymentId: paymentId,
+          paymentMethod: paymentData.method,
+          paidAt: isPaid ? new Date(paymentData.paidAt) : null,
+          status: isPaid ? 'paid' : (isFailed ? 'failed' : 'pending'),
+          webhookProcessedAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        // ✅ IMMEDIATE STATUS UPDATE
+        const result = await orders.updateOne(
+          { _id: new ObjectId(orderId) },
+          { $set: updateData }
+        );
+
+        if (result.matchedCount > 0) {
+          console.log(`✅ Order ${isPaid ? 'PAID' : (isFailed ? 'FAILED' : 'PENDING')} via webhook:`, orderId);
+          
+          // ✅ If payment failed, unreserve the charger immediately
+          if (isFailed) {
+            const order = await orders.findOne({ _id: new ObjectId(orderId) });
+            if (order && order.charger && order.charger.chargerId) {
+              await chargers.updateOne(
+                { chargerId: order.charger.chargerId },
+                { 
+                  $set: { reserved: false },
+                  $unset: { reservedAt: "" }
+                }
+              );
+              console.log('🔓 Charger unreserved due to failed payment:', order.charger.chargerId);
+            }
+          }
+        } else {
+          console.error('❌ Order not found for webhook update:', orderId);
+        }
+      } else {
+        console.error('❌ No order ID in payment metadata');
+      }
+
+      res.status(200).send('OK');
+
+    } catch (err) {
+      console.error('❌ Error processing Mollie webhook:', err);
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  });
+
+  // Payment webhook (generic)
   app.post('/api/payment-webhook', async (req, res) => {
     try {
       const { orderId, paymentStatus, paymentId, paymentMethod } = req.body;
@@ -261,13 +405,17 @@ connectDB().then((db) => {
         return res.status(400).json({ error: "Invalid order ID" });
       }
 
+      // ✅ Enhanced status handling
+      const isPaid = paymentStatus === 'paid';
+      const isFailed = ['failed', 'cancelled', 'canceled', 'expired'].includes(paymentStatus);
+
       const updateData = {
-        paid: paymentStatus === 'paid',
+        paid: isPaid,
         paymentStatus: paymentStatus,
         paymentId: paymentId,
         paymentMethod: paymentMethod,
-        paidAt: paymentStatus === 'paid' ? new Date() : null,
-        status: paymentStatus === 'paid' ? 'paid' : 'pending',
+        paidAt: isPaid ? new Date() : null,
+        status: isPaid ? 'paid' : (isFailed ? 'failed' : 'pending'),
         updatedAt: new Date()
       };
 
@@ -281,7 +429,7 @@ connectDB().then((db) => {
         return res.status(404).json({ error: "Order not found" });
       }
 
-      console.log('✅ Order payment status updated via webhook:', orderId);
+      console.log('✅ Order payment status updated via generic webhook:', orderId);
       res.json({ message: "Payment status updated" });
 
     } catch (err) {
@@ -299,6 +447,18 @@ connectDB().then((db) => {
       if (!ObjectId.isValid(id)) {
         console.error("❌ Invalid order ID:", id);
         return res.status(400).json({ error: "Invalid order ID" });
+      }
+
+      // ✅ SECURITY CHECK: Verify payment before allowing charging start
+      const order = await orders.findOne({ _id: new ObjectId(id) });
+      if (!order) {
+        console.error("❌ Order not found:", id);
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      if (!order.paid && order.paymentStatus !== 'paid') {
+        console.error("❌ Cannot start charging - payment not confirmed:", id);
+        return res.status(400).json({ error: "Payment not confirmed" });
       }
 
       const result = await orders.updateOne(
@@ -417,77 +577,6 @@ connectDB().then((db) => {
     }
   });
 
-  // Mollie webhook endpoint
-  app.post('/api/mollie-webhook', async (req, res) => {
-    try {
-      const { id: paymentId } = req.body;
-      
-      console.log('🔔 Mollie webhook received for payment:', paymentId);
-      
-      if (!paymentId) {
-        console.error("❌ Missing payment ID in webhook");
-        return res.status(400).json({ error: "Missing payment ID" });
-      }
-
-      // Get payment details from Mollie
-      const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
-      const fetch = require('node-fetch');
-      
-      const response = await fetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${MOLLIE_API_KEY}`,
-          "Content-Type": "application/json"
-        }
-      });
-
-      if (!response.ok) {
-        console.error("❌ Mollie API error in webhook:", response.statusText);
-        throw new Error(`Mollie API error: ${response.statusText}`);
-      }
-
-      const paymentData = await response.json();
-      console.log('💳 Payment data from Mollie:', {
-        id: paymentData.id,
-        status: paymentData.status,
-        orderId: paymentData.metadata?.orderId
-      });
-      
-      if (paymentData.metadata && paymentData.metadata.orderId) {
-        const orderId = paymentData.metadata.orderId;
-        
-        const updateData = {
-          paid: paymentData.status === 'paid',
-          paymentStatus: paymentData.status,
-          paymentId: paymentId,
-          paymentMethod: paymentData.method,
-          paidAt: paymentData.status === 'paid' ? new Date(paymentData.paidAt) : null,
-          status: paymentData.status === 'paid' ? 'paid' : 'pending',
-          updatedAt: new Date()
-        };
-
-        const result = await orders.updateOne(
-          { _id: new ObjectId(orderId) },
-          { $set: updateData }
-        );
-
-        if (result.matchedCount > 0) {
-          console.log('✅ Order updated via Mollie webhook:', orderId, paymentData.status);
-        } else {
-          console.error('❌ Order not found for webhook update:', orderId);
-        }
-      } else {
-        console.error('❌ No order ID in payment metadata');
-      }
-
-      res.status(200).send('OK');
-
-    } catch (err) {
-      console.error('❌ Error processing Mollie webhook:', err);
-      res.status(500).json({ error: "Webhook processing failed" });
-    }
-  });
-
   // Get all orders (admin)
   app.get('/api/orders', async (req, res) => {
     try {
@@ -546,4 +635,3 @@ app.listen(PORT, () => {
   console.log(`🚀 EV Charging Server running on port ${PORT}`);
   console.log(`📍 Server URL: http://localhost:${PORT}`);
 });
-            
