@@ -140,7 +140,7 @@ connectDB().then((db) => {
         ]
       }).toArray();
       
-      console.log(✅ Found ${availableChargers.length} available chargers);
+      console.log(`✅ Found ${availableChargers.length} available chargers`);
       res.json(availableChargers);
     } catch (err) {
       console.error('❌ Error fetching chargers:', err);
