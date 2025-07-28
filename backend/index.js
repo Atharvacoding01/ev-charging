@@ -715,17 +715,50 @@
 
 
 
-
-
 const express = require('express');
 const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
 const cors = require('cors');
-const fetch = require('node-fetch'); // Ensure installed: npm install node-fetch
+const https = require('https');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Custom fetch function using Node.js built-in https module (no external dependencies)
+function customFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const requestOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || 443,
+      path: urlObj.pathname + urlObj.search,
+      method: options.method || 'GET',
+      headers: options.headers || {}
+    };
+
+    const req = https.request(requestOptions, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          json: () => Promise.resolve(JSON.parse(data)),
+          text: () => Promise.resolve(data)
+        });
+      });
+    });
+
+    req.on('error', reject);
+    
+    if (options.body) {
+      req.write(options.body);
+    }
+    
+    req.end();
+  });
+}
 
 connectDB().then((db) => {
   const chargers = db.collection('chargers');
@@ -883,8 +916,8 @@ connectDB().then((db) => {
 
       const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
 
-      // Fetch payment details from Mollie
-      const response = await fetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+      // Fetch payment details from Mollie using custom fetch
+      const response = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
         headers: {
           "Authorization": `Bearer ${MOLLIE_API_KEY}`,
           "Content-Type": "application/json"
