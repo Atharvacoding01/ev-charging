@@ -1521,6 +1521,125 @@ connectDB().then((db) => {
   process.exit(1);
 });
 
+app.post('/api/create-owner-session', async (req, res) => {
+  try {
+    const { charger, isOwner, timestamp } = req.body;
+    
+    const ownerSession = {
+      charger,
+      isOwner: true,
+      timestamp: timestamp || new Date().toISOString(),
+      sessionType: 'owner',
+      paid: true,
+      paymentStatus: 'owner_session',
+      createdAt: new Date(),
+      status: 'active'
+    };
+    
+    const result = await db.collection('ownerSessions').insertOne(ownerSession);
+    console.log(`✅ Owner session created: ${result.insertedId}`);
+    
+    res.json({ 
+      message: "Owner session created", 
+      sessionId: result.insertedId,
+      session: ownerSession 
+    });
+  } catch (error) {
+    console.error('❌ Error creating owner session:', error);
+    res.status(500).json({ error: "Failed to create owner session" });
+  }
+});
+
+app.get('/api/get-owner-session/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid session ID" });
+    }
+    
+    const ownerSession = await db.collection('ownerSessions').findOne({ _id: new ObjectId(id) });
+    if (!ownerSession) {
+      return res.status(404).json({ error: "Owner session not found" });
+    }
+    
+    res.json(ownerSession);
+  } catch (error) {
+    console.error('❌ Error fetching owner session:', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post('/api/start-owner-charging/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid session ID" });
+    }
+    
+    const updateResult = await db.collection('ownerSessions').updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          chargingStarted: true,
+          chargingStartedAt: new Date(),
+          status: 'charging',
+          updatedAt: new Date()
+        }
+      }
+    );
+    
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({ error: "Owner session not found" });
+    }
+    
+    console.log(`✅ Owner charging started for session: ${id}`);
+    res.json({ message: "Owner charging started", sessionId: id });
+  } catch (error) {
+    console.error('❌ Error starting owner charging:', error);
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+
+app.post('/api/owner-charging-status', async (req, res) => {
+  try {
+    const { sessionId, startTime, endTime, durationSeconds, amountPaid, powerKW, userInfo } = req.body;
+    
+    const chargingData = {
+      sessionId: sessionId ? new ObjectId(sessionId) : null,
+      sessionType: 'owner',
+      startTime: new Date(startTime),
+      endTime: endTime ? new Date(endTime) : new Date(),
+      durationSeconds,
+      amountPaid: 0, // Owner sessions are free
+      powerKW: parseFloat(powerKW) || 0,
+      isOwner: true,
+      createdAt: new Date()
+    };
+    
+    const result = await db.collection('chargingStatus').insertOne(chargingData);
+    
+    // Update owner session
+    if (sessionId && ObjectId.isValid(sessionId)) {
+      await db.collection('ownerSessions').updateOne(
+        { _id: new ObjectId(sessionId) },
+        {
+          $set: {
+            chargingCompleted: true,
+            chargingCompletedAt: new Date(),
+            status: 'completed',
+            updatedAt: new Date()
+          }
+        }
+      );
+    }
+    
+    console.log(`✅ Owner charging session completed: ${sessionId}`);
+    res.json({ message: "Owner charging session saved", id: result.insertedId });
+  } catch (error) {
+    console.error('❌ Error saving owner charging session:', error);
+    res.status(500).json({ error: "Internal error" });
+  }
+});
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
