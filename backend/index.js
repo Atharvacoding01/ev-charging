@@ -1079,7 +1079,7 @@ const connectDB = require('./config/mongo');
 const cors = require('cors');
 const https = require('https');
 const OCPPServer = require('./ocpp/ocpp-server');
-const { v4: uuidv4 } = require('uuid');
+//const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 app.use(cors());
