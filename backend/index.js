@@ -1078,7 +1078,8 @@ const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
 const cors = require('cors');
 const https = require('https');
-const OCPPServer = require('./ocpp-server');
+const OCPPServer = require('./ocpp/ocpp-server');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 app.use(cors());
@@ -1121,11 +1122,12 @@ connectDB().then((db) => {
   const chargingStatus = db.collection('chargingStatus');
   const tempReservations = db.collection('tempReservations');
   const ownerSessions = db.collection('ownerSessions');
-
+  
   console.log("✅ Connected to MongoDB collections");
 
   // OCPP Server Initialization
   const ocppServer = new OCPPServer(8080, db);
+  console.log("🔌 OCPP Server initialized on port 8080");
 
   // Reservation Cleanup
   async function cleanupExpiredTempReservations() {
@@ -1140,22 +1142,312 @@ connectDB().then((db) => {
       console.error('❌ Error cleaning up expired reservations:', error);
     }
   }
+
   cleanupExpiredTempReservations();
   setInterval(cleanupExpiredTempReservations, 5 * 60 * 1000);
 
-  // API Endpoints Setup
-  require('./routes/ocpp-routes')(app, ocppServer, db);
-  require('./routes/reservation-routes')(app, db);
-  require('./routes/payment-routes')(app, db, customFetch);
-  require('./routes/charging-routes')(app, db);
-  require('./routes/admin-routes')(app, db);
-  require('./routes/owner-routes')(app, db);
+  // OCPP API Endpoints
+  app.get('/api/ocpp/charge-points', (req, res) => {
+    const connectedChargePoints = ocppServer.getConnectedChargePoints();
+    res.json({ chargePoints: connectedChargePoints });
+  });
 
-  app.get('/', (req, res) => res.send('🚀 EV Charging Backend Running!'));
+  app.get('/api/ocpp/status/:chargePointId', (req, res) => {
+    const { chargePointId } = req.params;
+    const status = ocppServer.getChargePointStatus(chargePointId);
+    
+    if (!status) {
+      return res.status(404).json({ error: 'Charge point not connected' });
+    }
+    
+    res.json(status);
+  });
+
+  app.get('/api/ocpp/status', (req, res) => {
+    const allStatuses = ocppServer.getAllChargePointStatuses();
+    res.json(allStatuses);
+  });
+
+  // Remote control endpoints
+  app.post('/api/ocpp/remote-start/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { idTag, connectorId } = req.body;
+
+      if (!idTag) {
+        return res.status(400).json({ error: 'idTag is required' });
+      }
+
+      const messageId = await ocppServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Remote start command sent', messageId });
+    } catch (error) {
+      console.error('❌ Remote start error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/ocpp/remote-stop/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { transactionId } = req.body;
+
+      if (!transactionId) {
+        return res.status(400).json({ error: 'transactionId is required' });
+      }
+
+      const messageId = await ocppServer.remoteStopTransaction(chargePointId, transactionId);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Remote stop command sent', messageId });
+    } catch (error) {
+      console.error('❌ Remote stop error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/ocpp/unlock/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { connectorId } = req.body;
+
+      const messageId = await ocppServer.unlockConnector(chargePointId, connectorId);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Unlock command sent', messageId });
+    } catch (error) {
+      console.error('❌ Unlock error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/ocpp/reset/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { type } = req.body;
+
+      const messageId = await ocppServer.resetChargePoint(chargePointId, type);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Reset command sent', messageId });
+    } catch (error) {
+      console.error('❌ Reset error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get OCPP transactions
+  app.get('/api/ocpp/transactions', async (req, res) => {
+    try {
+      const transactions = await db.collection('ocppTransactions')
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
+      
+      res.json(transactions);
+    } catch (error) {
+      console.error('❌ Error fetching OCPP transactions:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get meter values
+  app.get('/api/ocpp/meter-values/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const meterValues = await db.collection('ocppMeterValues')
+        .find({ chargerId: chargePointId })
+        .sort({ timestamp: -1 })
+        .limit(100)
+        .toArray();
+      
+      res.json(meterValues);
+    } catch (error) {
+      console.error('❌ Error fetching meter values:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // API Routes Setup (if you have separate route files)
+  try {
+    const ocppRoutes = require('./routes/ocpp-routes');
+    const reservationRoutes = require('./routes/reservation-routes');
+    const paymentRoutes = require('./routes/payment-routes');
+    const chargingRoutes = require('./routes/charging-routes');
+    const adminRoutes = require('./routes/admin-routes');
+    const ownerRoutes = require('./routes/owner-routes');
+
+    app.use('/api/ocpp-routes', ocppRoutes(ocppServer, db));
+    app.use('/api/reservations', reservationRoutes(db));
+    app.use('/api/payments', paymentRoutes(db, customFetch));
+    app.use('/api/charging', chargingRoutes(db));
+    app.use('/api/admin', adminRoutes(db));
+    app.use('/api/owner', ownerRoutes(db));
+  } catch (error) {
+    console.log("ℹ️ Route files not found, using inline OCPP endpoints only");
+  }
+
+  // Basic charger endpoints (if not in separate route files)
+  app.get('/api/chargers', async (req, res) => {
+    try {
+      const chargersList = await chargers.find({}).toArray();
+      res.json(chargersList);
+    } catch (error) {
+      console.error('❌ Error fetching chargers:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.get('/api/chargers/:id', async (req, res) => {
+    try {
+      const charger = await chargers.findOne({ 
+        _id: new ObjectId(req.params.id) 
+      });
+      
+      if (!charger) {
+        return res.status(404).json({ error: 'Charger not found' });
+      }
+      
+      res.json(charger);
+    } catch (error) {
+      console.error('❌ Error fetching charger:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Order management endpoints
+  app.post('/api/orders', async (req, res) => {
+    try {
+      const orderData = {
+        ...req.body,
+        orderId: uuidv4(),
+        createdAt: new Date(),
+        status: 'pending'
+      };
+
+      const result = await orders.insertOne(orderData);
+      res.json({ 
+        success: true, 
+        orderId: orderData.orderId,
+        _id: result.insertedId 
+      });
+    } catch (error) {
+      console.error('❌ Error creating order:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.get('/api/orders/:orderId', async (req, res) => {
+    try {
+      const order = await orders.findOne({ 
+        orderId: req.params.orderId 
+      });
+      
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+      
+      res.json(order);
+    } catch (error) {
+      console.error('❌ Error fetching order:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Charging status endpoints
+  app.get('/api/charging-status/:orderId', async (req, res) => {
+    try {
+      const status = await chargingStatus.findOne({ 
+        orderId: req.params.orderId 
+      });
+      
+      if (!status) {
+        return res.status(404).json({ error: 'Charging status not found' });
+      }
+      
+      res.json(status);
+    } catch (error) {
+      console.error('❌ Error fetching charging status:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/charging-status', async (req, res) => {
+    try {
+      const statusData = {
+        ...req.body,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      const result = await chargingStatus.insertOne(statusData);
+      res.json({ success: true, _id: result.insertedId });
+    } catch (error) {
+      console.error('❌ Error creating charging status:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Health check endpoint
+  app.get('/health', (req, res) => {
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      ocpp: {
+        connected: ocppServer.getConnectedChargePoints().length,
+        port: 8080
+      }
+    });
+  });
+
+  // Root endpoint
+  app.get('/', (req, res) => {
+    res.json({
+      message: '🚀 EV Charging Backend Running!',
+      version: '1.0.0',
+      features: ['OCPP 1.6J', 'WebSocket', 'REST API'],
+      endpoints: {
+        ocpp: '/api/ocpp/*',
+        chargers: '/api/chargers',
+        orders: '/api/orders',
+        health: '/health'
+      }
+    });
+  });
+
+  // Error handling middleware
+  app.use((error, req, res, next) => {
+    console.error('❌ Unhandled error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+    });
+  });
+
+  // 404 handler
+  app.use('*', (req, res) => {
+    res.status(404).json({ error: 'Endpoint not found' });
+  });
 
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🔌 OCPP WebSocket server running on port 8080`);
+    console.log(`📊 API endpoints available at http://localhost:${PORT}`);
+    console.log(`🌐 Health check: http://localhost:${PORT}/health`);
   });
 
 }).catch(err => {
