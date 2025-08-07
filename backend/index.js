@@ -2292,19 +2292,67 @@
 // });
 
 
-// ===== CMS API ENDPOINTS FOR OCPP MANAGEMENT =====
-// Add these endpoints to your main server.js file
+const express = require('express');
+const { ObjectId } = require('mongodb');
+const connectDB = require('./config/mongo');
+const cors = require('cors');
+const https = require('https');
 
-// Initialize OCPP WebSocket Server
+// OCPP imports
 const OCPPWebSocketServer = require('./ocpp/ocpp-websocket-server');
 const OCPPCMSConfig = require('./ocpp/ocpp-cms-config');
 
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Global OCPP variables
 let ocppWebSocketServer = null;
 let ocppCMS = null;
 
-// Initialize OCPP services after MongoDB connection
+// Custom fetch function using Node.js built-in https module (no external dependencies)
+function customFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const requestOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || 443,
+      path: urlObj.pathname + urlObj.search,
+      method: options.method || 'GET',
+      headers: options.headers || {}
+    };
+
+    const req = https.request(requestOptions, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          json: () => Promise.resolve(JSON.parse(data)),
+          text: () => Promise.resolve(data)
+        });
+      });
+    });
+
+    req.on('error', reject);
+    
+    if (options.body) {
+      req.write(options.body);
+    }
+    
+    req.end();
+  });
+}
+
+// After connecting to MongoDB, initialize OCPP server and all other services
 connectDB().then((db) => {
-  // ... existing code ...
+  const chargers = db.collection('chargers');
+  const orders = db.collection('orders');
+  const chargingStatus = db.collection('chargingStatus');
+  const ownerSessions = db.collection('ownerSessions');
+
+  console.log("✅ Connected to MongoDB collections");
 
   // Initialize OCPP services
   ocppCMS = new OCPPCMSConfig(db);
@@ -2316,6 +2364,9 @@ connectDB().then((db) => {
   }).catch(error => {
     console.error('❌ Failed to initialize OCPP WebSocket Server:', error);
   });
+
+  // Basic route
+  app.get('/', (req, res) => res.send('🚀 EV Charging Backend Running!'));
 
   // ========== CMS CONFIGURATION ENDPOINTS ==========
   
@@ -2689,8 +2740,396 @@ connectDB().then((db) => {
     }
   });
 
-  // ========== INTEGRATION WITH EXISTING CHARGING ENDPOINTS ==========
-  
+  // ========== CHARGER MANAGEMENT ENDPOINTS ==========
+  app.get('/api/chargers', async (req, res) => {
+    try {
+      console.log("📤 GET /api/chargers - Fetching available chargers");
+      
+      // Get all chargers (no reservation filtering)
+      const allChargers = await chargers.find({}).toArray();
+
+      console.log(`✅ Found ${allChargers.length} chargers`);
+      res.json(allChargers);
+    } catch (err) {
+      console.error('❌ Error fetching chargers:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // ========== ORDER MANAGEMENT ENDPOINTS ==========
+  // Save order (simplified without reservations)
+  app.post('/api/save-order', async (req, res) => {
+    try {
+      const { charger, firstName, lastName, email, phone, timestamp } = req.body;
+
+      if (!charger?.chargerId || !firstName || !lastName || !email || !phone) {
+        return res.status(400).json({ error: "Missing required information" });
+      }
+
+      const chargerDoc = await chargers.findOne({ chargerId: charger.chargerId });
+      if (!chargerDoc) {
+        return res.status(400).json({ error: "Charger not found" });
+      }
+
+      const orderData = {
+        charger,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        timestamp: timestamp || new Date().toISOString(),
+        paid: false,
+        paymentStatus: 'pending',
+        chargingStarted: false,
+        chargingCompleted: false,
+        createdAt: new Date(),
+        status: 'pending'
+      };
+
+      const result = await orders.insertOne(orderData);
+      console.log(`✅ Order saved with ID: ${result.insertedId}, Status: pending`);
+      res.status(200).json({ message: "Order saved", id: result.insertedId });
+    } catch (err) {
+      console.error('❌ Error saving order:', err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get('/api/get-order/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!ObjectId.isValid(id)) {
+        console.error(`❌ Invalid order ID format: ${id}`);
+        return res.status(400).json({ error: "Invalid ID" });
+      }
+
+      const order = await orders.findOne({ _id: new ObjectId(id) });
+      if (!order) {
+        console.error(`❌ Order not found: ${id}`);
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      console.log(`✅ Order retrieved: ${id}`, {
+        status: order.status,
+        paid: order.paid,
+        paymentStatus: order.paymentStatus,
+        molliePaymentId: order.molliePaymentId,
+        paidAt: order.paidAt
+      });
+
+      res.json(order);
+    } catch (err) {
+      console.error('❌ Error fetching order:', err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Initiate refund endpoint
+  app.post('/api/initiate-refund', async (req, res) => {
+    try {
+      const { orderId } = req.body;
+
+      if (!orderId || !ObjectId.isValid(orderId)) {
+        return res.status(400).json({ error: "Valid Order ID is required" });
+      }
+
+      // Get order details
+      const order = await orders.findOne({ _id: new ObjectId(orderId) });
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      // Mark order for refund
+      await orders.updateOne(
+        { _id: new ObjectId(orderId) },
+        { 
+          $set: { 
+            refundRequested: true,
+            refundRequestedAt: new Date(),
+            status: 'refund_requested',
+            updatedAt: new Date()
+          } 
+        }
+      );
+
+      console.log(`✅ Refund initiated for order ${orderId}, payment ID: ${order.molliePaymentId || order.paymentId}`);
+      
+      res.json({ 
+        message: "Refund initiated", 
+        orderId,
+        paymentId: order.molliePaymentId || order.paymentId
+      });
+
+    } catch (error) {
+      console.error('❌ Error initiating refund:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ========== PAYMENT ENDPOINTS ==========
+  // Payment creation notification from frontend
+  app.post('/api/payment-created', async (req, res) => {
+    try {
+      const { orderId, molliePaymentId, paymentStatus, amount, customerInfo, timestamp } = req.body;
+      
+      if (!orderId || !ObjectId.isValid(orderId)) {
+        return res.status(400).json({ error: "Invalid order ID" });
+      }
+
+      const updateData = {
+        molliePaymentId,
+        paymentStatus: paymentStatus || 'open',
+        paymentAmount: amount,
+        paymentCreatedAt: new Date(timestamp),
+        updatedAt: new Date()
+      };
+
+      await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+      console.log(`✅ Payment creation recorded for order: ${orderId}, Mollie ID: ${molliePaymentId}`);
+      
+      res.json({ message: "Payment creation recorded" });
+    } catch (err) {
+      console.error('❌ Error recording payment creation:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // Generic payment webhook (for manual updates)
+  app.post('/api/payment-webhook', async (req, res) => {
+    try {
+      const { orderId, paymentStatus, paymentId, paymentMethod } = req.body;
+      if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid order ID" });
+
+      const updateData = {
+        paid: paymentStatus === 'paid',
+        paymentStatus,
+        paymentId,
+        paymentMethod,
+        paidAt: paymentStatus === 'paid' ? new Date() : null,
+        status: paymentStatus === 'paid' ? 'paid' : (paymentStatus === 'failed' || paymentStatus === 'cancelled' ? paymentStatus : 'pending'),
+        updatedAt: new Date()
+      };
+
+      await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+      console.log(`✅ Payment webhook updated order: ${orderId}, Status: ${paymentStatus}`);
+      res.json({ message: "Webhook updated" });
+    } catch (err) {
+      console.error('❌ Error processing payment webhook:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // Mollie webhook - simplified without reservations
+  app.post('/api/mollie-webhook', async (req, res) => {
+    try {
+      const { id: paymentId } = req.body;
+      
+      if (!paymentId) {
+        console.error("❌ Mollie webhook: Missing payment ID");
+        return res.status(400).json({ error: "Missing payment ID" });
+      }
+
+      console.log(`📥 Mollie webhook received for payment: ${paymentId}`);
+
+      const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+
+      // Fetch payment details from Mollie
+      const response = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+        headers: {
+          "Authorization": `Bearer ${MOLLIE_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`❌ Failed to fetch payment from Mollie: ${response.status}`);
+        return res.status(400).json({ error: "Failed to fetch payment data" });
+      }
+
+      const paymentData = await response.json();
+      console.log(`📋 Mollie payment data:`, {
+        id: paymentData.id,
+        status: paymentData.status,
+        method: paymentData.method,
+        amount: paymentData.amount,
+        metadata: paymentData.metadata
+      });
+
+      // Update order with payment information
+      if (paymentData?.metadata?.orderId) {
+        const orderId = paymentData.metadata.orderId;
+
+        const updateData = {
+          paid: paymentData.status === 'paid',
+          paymentStatus: paymentData.status,
+          paymentId,
+          paymentMethod: paymentData.method,
+          paidAt: paymentData.status === 'paid' && paymentData.paidAt ? new Date(paymentData.paidAt) : null,
+          status: paymentData.status === 'paid' ? 'paid' : 
+                 (paymentData.status === 'failed' || paymentData.status === 'cancelled' || paymentData.status === 'expired') ? paymentData.status : 'pending',
+          mollieWebhookAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        const result = await orders.updateOne(
+          { _id: new ObjectId(orderId) },
+          { $set: updateData }
+        );
+
+        if (result.matchedCount > 0) {
+          console.log(`✅ Order ${orderId} updated with payment status: ${paymentData.status}`, {
+            paid: updateData.paid,
+            paymentStatus: updateData.paymentStatus,
+            status: updateData.status
+          });
+        } else {
+          console.error(`❌ Order ${orderId} not found for payment update`);
+        }
+      } else {
+        console.error("❌ No order ID found in payment metadata");
+      }
+
+      res.status(200).send("OK");
+    } catch (err) {
+      console.error("❌ Mollie webhook processing failed:", err);
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  });
+
+  // Direct Mollie payment verification endpoint
+  app.get('/api/verify-mollie-payment/:paymentId', async (req, res) => {
+    try {
+      const { paymentId } = req.params;
+      
+      console.log("🔍 Direct Mollie verification requested for payment:", paymentId);
+      
+      if (!paymentId) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Payment ID is required' 
+        });
+      }
+      
+      const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+      
+      // Verify payment directly with Mollie API
+      const mollieResponse = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${MOLLIE_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!mollieResponse.ok) {
+        console.error("❌ Mollie API error:", mollieResponse.status);
+        const errorText = await mollieResponse.text();
+        return res.status(mollieResponse.status).json({ 
+          success: false, 
+          error: `Mollie API error: ${errorText}` 
+        });
+      }
+      
+      const paymentData = await mollieResponse.json();
+      console.log("📋 Mollie payment data:", {
+        id: paymentData.id,
+        status: paymentData.status,
+        amount: paymentData.amount
+      });
+      
+      const isPaid = paymentData.status === 'paid';
+      
+      // If payment is confirmed as paid, update our database
+      if (isPaid && paymentData.metadata && paymentData.metadata.orderId) {
+        try {
+          console.log("✅ Payment confirmed paid, updating database...");
+          
+          const updateData = {
+            paid: true,
+            paymentStatus: 'paid',
+            status: 'paid',
+            paidAt: paymentData.paidAt ? new Date(paymentData.paidAt) : new Date(),
+            mollieDirectVerifiedAt: new Date(),
+            updatedAt: new Date()
+          };
+          
+          const updateResult = await orders.updateOne(
+            { _id: new ObjectId(paymentData.metadata.orderId) },
+            { $set: updateData }
+          );
+          
+          console.log("📋 Database update result:", {
+            matchedCount: updateResult.matchedCount,
+            modifiedCount: updateResult.modifiedCount
+          });
+          
+        } catch (dbError) {
+          console.error("❌ Failed to update database:", dbError);
+          // Don't fail the verification if DB update fails
+        }
+      }
+      
+      res.json({
+        success: true,
+        payment: {
+          id: paymentData.id,
+          status: paymentData.status,
+          amount: paymentData.amount,
+          description: paymentData.description,
+          createdAt: paymentData.createdAt,
+          paidAt: paymentData.paidAt
+        },
+        isPaid: isPaid,
+        status: paymentData.status
+      });
+      
+    } catch (error) {
+      console.error("❌ Direct Mollie verification error:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Internal server error during payment verification' 
+      });
+    }
+  });
+
+  // Manual payment status update endpoint (for testing/debugging)
+  app.post('/api/update-payment-status/:orderId', async (req, res) => {
+    try {
+      const orderId = req.params.orderId;
+      const { paymentStatus, paid } = req.body;
+      
+      if (!ObjectId.isValid(orderId)) {
+        return res.status(400).json({ error: "Invalid order ID" });
+      }
+      
+      const updateData = {
+        paid: paid === true || paymentStatus === 'paid',
+        paymentStatus: paymentStatus || 'paid',
+        status: paymentStatus === 'paid' ? 'paid' : paymentStatus,
+        paidAt: (paid === true || paymentStatus === 'paid') ? new Date() : null,
+        manuallyUpdatedAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      const result = await orders.updateOne(
+        { _id: new ObjectId(orderId) },
+        { $set: updateData }
+      );
+      
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+      
+      console.log(`✅ Manual payment status update for order: ${orderId}`, updateData);
+      res.json({ message: "Payment status updated", updateData });
+      
+    } catch (error) {
+      console.error("❌ Error updating payment status:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ========== CHARGING CONTROL ENDPOINTS ==========
   // Enhanced start charging with OCPP support
   app.post('/api/start-charging/:id', async (req, res) => {
     try {
@@ -2765,6 +3204,172 @@ connectDB().then((db) => {
     }
   });
 
+  app.post('/api/charging-status', async (req, res) => {
+    try {
+      const { orderId, startTime, endTime, durationSeconds, amountPaid, powerKW } = req.body;
+      if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid data" });
+
+      const order = await orders.findOne({ _id: new ObjectId(orderId) });
+      if (!order) return res.status(404).json({ error: "Order not found" });
+
+      const chargingData = {
+        orderId: new ObjectId(orderId),
+        startTime: new Date(startTime),
+        endTime: endTime ? new Date(endTime) : new Date(),
+        durationSeconds,
+        amountPaid: parseFloat(amountPaid) || 0,
+        powerKW: parseFloat(powerKW) || 0,
+        userPhone: order.phone,
+        userEmail: order.email,
+        userName: `${order.firstName} ${order.lastName}`,
+        charger: order.charger,
+        createdAt: new Date()
+      };
+
+      const result = await chargingStatus.insertOne(chargingData);
+
+      await orders.updateOne(
+        { _id: new ObjectId(orderId) },
+        {
+          $set: {
+            chargingCompleted: true,
+            chargingCompletedAt: new Date(),
+            status: 'completed',
+            finalAmount: parseFloat(amountPaid) || 0,
+            updatedAt: new Date()
+          }
+        }
+      );
+
+      console.log(`✅ Charging session completed for order: ${orderId}`);
+      res.status(200).json({ message: "Charging session saved", id: result.insertedId });
+    } catch (err) {
+      console.error('❌ Error saving charging session:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // ========== OWNER SESSION ENDPOINTS ==========
+  app.post('/api/create-owner-session', async (req, res) => {
+    try {
+      const { charger, isOwner, timestamp } = req.body;
+      
+      const ownerSession = {
+        charger,
+        isOwner: true,
+        timestamp: timestamp || new Date().toISOString(),
+        sessionType: 'owner',
+        paid: true,
+        paymentStatus: 'owner_session',
+        createdAt: new Date(),
+        status: 'active'
+      };
+      
+      const result = await ownerSessions.insertOne(ownerSession);
+      console.log(`✅ Owner session created: ${result.insertedId}`);
+      
+      res.json({ 
+        message: "Owner session created", 
+        sessionId: result.insertedId,
+        session: ownerSession 
+      });
+    } catch (error) {
+      console.error('❌ Error creating owner session:', error);
+      res.status(500).json({ error: "Failed to create owner session" });
+    }
+  });
+
+  app.get('/api/get-owner-session/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "Invalid session ID" });
+      }
+      
+      const ownerSession = await ownerSessions.findOne({ _id: new ObjectId(id) });
+      if (!ownerSession) {
+        return res.status(404).json({ error: "Owner session not found" });
+      }
+      
+      res.json(ownerSession);
+    } catch (error) {
+      console.error('❌ Error fetching owner session:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post('/api/start-owner-charging/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "Invalid session ID" });
+      }
+      
+      const updateResult = await ownerSessions.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            chargingStarted: true,
+            chargingStartedAt: new Date(),
+            status: 'charging',
+            updatedAt: new Date()
+          }
+        }
+      );
+      
+      if (updateResult.matchedCount === 0) {
+        return res.status(404).json({ error: "Owner session not found" });
+      }
+      
+      console.log(`✅ Owner charging started for session: ${id}`);
+      res.json({ message: "Owner charging started", sessionId: id });
+    } catch (error) {
+      console.error('❌ Error starting owner charging:', error);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  app.post('/api/owner-charging-status', async (req, res) => {
+    try {
+      const { sessionId, startTime, endTime, durationSeconds, amountPaid, powerKW, userInfo } = req.body;
+      
+      const chargingData = {
+        sessionId: sessionId ? new ObjectId(sessionId) : null,
+        sessionType: 'owner',
+        startTime: new Date(startTime),
+        endTime: endTime ? new Date(endTime) : new Date(),
+        durationSeconds,
+        amountPaid: 0, // Owner sessions are free
+        powerKW: parseFloat(powerKW) || 0,
+        isOwner: true,
+        createdAt: new Date()
+      };
+      
+      const result = await chargingStatus.insertOne(chargingData);
+      
+      // Update owner session
+      if (sessionId && ObjectId.isValid(sessionId)) {
+        await ownerSessions.updateOne(
+          { _id: new ObjectId(sessionId) },
+          {
+            $set: {
+              chargingCompleted: true,
+              chargingCompletedAt: new Date(),
+              status: 'completed',
+              updatedAt: new Date()
+            }
+          }
+        );
+      }
+      
+      console.log(`✅ Owner charging session completed: ${sessionId}`);
+      res.json({ message: "Owner charging session saved", id: result.insertedId });
+    } catch (error) {
+      console.error('❌ Error saving owner charging session:', error);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
   // ========== DASHBOARD/STATISTICS ENDPOINTS ==========
   
   // Get CMS dashboard data
@@ -2811,9 +3416,183 @@ connectDB().then((db) => {
     }
   });
 
-  console.log('✅ CMS API endpoints initialized');
+  // ========== ADMIN ENDPOINTS ==========
+  app.get('/api/orders', async (req, res) => {
+    try {
+      const allOrders = await orders.find({}).sort({ createdAt: -1 }).toArray();
+      res.json(allOrders);
+    } catch (err) {
+      console.error('❌ Error fetching orders:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  app.get('/api/charging-sessions', async (req, res) => {
+    try {
+      const sessions = await chargingStatus.find({}).sort({ createdAt: -1 }).toArray();
+      res.json(sessions);
+    } catch (err) {
+      console.error('❌ Error fetching charging sessions:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  app.get('/api/charging-sessions/:orderId', async (req, res) => {
+    try {
+      const orderId = req.params.orderId;
+      if (!ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const sessions = await chargingStatus.find({ orderId: new ObjectId(orderId) }).toArray();
+      res.json(sessions);
+    } catch (err) {
+      console.error('❌ Error fetching charging sessions for order:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // ========== OCPP API ENDPOINTS ==========
+  app.get('/api/ocpp/charge-points', (req, res) => {
+    const connectedChargePoints = ocppWebSocketServer.getConnectedChargePoints();
+    res.json({ chargePoints: connectedChargePoints });
+  });
+
+  app.get('/api/ocpp/status/:chargePointId', (req, res) => {
+    const { chargePointId } = req.params;
+    const status = ocppWebSocketServer.getChargePointStatus(chargePointId);
+    
+    if (!status) {
+      return res.status(404).json({ error: 'Charge point not connected' });
+    }
+    
+    res.json(status);
+  });
+
+  app.get('/api/ocpp/status', (req, res) => {
+    const allStatuses = ocppWebSocketServer.getAllChargePointStatuses();
+    res.json(allStatuses);
+  });
+
+  // Remote control endpoints
+  app.post('/api/ocpp/remote-start/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { idTag, connectorId } = req.body;
+
+      if (!idTag) {
+        return res.status(400).json({ error: 'idTag is required' });
+      }
+
+      const messageId = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Remote start command sent', messageId });
+    } catch (error) {
+      console.error('❌ Remote start error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/ocpp/remote-stop/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { transactionId } = req.body;
+
+      if (!transactionId) {
+        return res.status(400).json({ error: 'transactionId is required' });
+      }
+
+      const messageId = await ocppWebSocketServer.remoteStopTransaction(chargePointId, transactionId);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Remote stop command sent', messageId });
+    } catch (error) {
+      console.error('❌ Remote stop error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/ocpp/unlock/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { connectorId } = req.body;
+
+      const messageId = await ocppWebSocketServer.unlockConnector(chargePointId, connectorId);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Unlock command sent', messageId });
+    } catch (error) {
+      console.error('❌ Unlock error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/ocpp/reset/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { type } = req.body;
+
+      const messageId = await ocppWebSocketServer.resetChargePoint(chargePointId, type);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Reset command sent', messageId });
+    } catch (error) {
+      console.error('❌ Reset error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get OCPP transactions
+  app.get('/api/ocpp/transactions', async (req, res) => {
+    try {
+      const transactions = await db.collection('ocppTransactions')
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
+      
+      res.json(transactions);
+    } catch (error) {
+      console.error('❌ Error fetching OCPP transactions:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get meter values
+  app.get('/api/ocpp/meter-values/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const meterValues = await db.collection('ocppMeterValues')
+        .find({ chargerId: chargePointId })
+        .sort({ timestamp: -1 })
+        .limit(100)
+        .toArray();
+      
+      res.json(meterValues);
+    } catch (error) {
+      console.error('❌ Error fetching meter values:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  console.log('✅ All API endpoints initialized');
   
 }).catch(err => {
   console.error("❌ MongoDB connection failed:", err);
   process.exit(1);
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
