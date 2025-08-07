@@ -1077,7 +1077,7 @@ const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
 const cors = require('cors');
 const https = require('https');
-const OCPPServer = require('./ocpp-server');
+const OCPPServer = require('./ocpp/ocpp-server');
 
 const app = express();
 app.use(cors());
