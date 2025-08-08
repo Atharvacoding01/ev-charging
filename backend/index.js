@@ -2301,6 +2301,434 @@ const https = require('https');
 // OCPP imports
 const OCPPWebSocketServer = require('./ocpp/ocpp-websocket-server');
 const OCPPCMSConfig = require('./ocpp/ocpp-cms-config');
+// ===== PCB INTEGRATION API ENDPOINTS =====
+// Add these endpoints to your main server.js file
+
+// Add this import at the top of your server.js
+const OCPPPCBIntegration = require('./ocpp/ocpp-pcb-integration');
+
+// Add this after your database connection
+let pcbIntegration = null;
+
+// Inside your connectDB().then() block, after other initializations:
+connectDB().then((db) => {
+  // ... existing code ...
+  
+  // Initialize PCB Integration
+  pcbIntegration = new OCPPPCBIntegration(db);
+  console.log('✅ PCB Integration initialized');
+
+  // ========== PCB DEVICE MANAGEMENT ENDPOINTS ==========
+  
+  // Register new PCB device
+  app.post('/api/pcb/register-device', async (req, res) => {
+    try {
+      const deviceData = req.body;
+      
+      // Validate required fields
+      if (!deviceData.chargePointId || !deviceData.hardwareId) {
+        return res.status(400).json({ 
+          error: 'chargePointId and hardwareId are required' 
+        });
+      }
+
+      // Check if device already exists
+      const existingDevice = await pcbIntegration.pcbDevices.findOne({
+        $or: [
+          { hardwareId: deviceData.hardwareId },
+          { chargePointId: deviceData.chargePointId }
+        ]
+      });
+
+      if (existingDevice) {
+        return res.status(400).json({ 
+          error: 'Device with this hardware ID or charge point ID already exists' 
+        });
+      }
+
+      const result = await pcbIntegration.registerPCBDevice(deviceData);
+      
+      res.json({
+        message: 'PCB device registered successfully',
+        device: result,
+        connectionInstructions: {
+          step1: 'Flash the provided credentials to your PCB',
+          step2: 'Connect to WebSocket endpoint using the provided URL',
+          step3: 'Send authentication headers with each OCPP message',
+          step4: 'Implement OCPP 1.6 protocol for communication'
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error registering PCB device:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get all PCB devices
+  app.get('/api/pcb/devices', async (req, res) => {
+    try {
+      const { includeOffline } = req.query;
+      const devices = await pcbIntegration.getPCBDevices(includeOffline === 'true');
+      
+      // Remove sensitive information
+      const sanitizedDevices = devices.map(device => ({
+        deviceId: device.deviceId,
+        chargePointId: device.chargePointId,
+        deviceName: device.deviceName,
+        status: device.status,
+        isOnline: device.isOnline,
+        lastHeartbeat: device.lastHeartbeat,
+        firmwareVersion: device.firmwareVersion,
+        capabilities: device.capabilities,
+        createdAt: device.createdAt
+      }));
+
+      res.json(sanitizedDevices);
+    } catch (error) {
+      console.error('❌ Error fetching PCB devices:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get specific PCB device details
+  app.get('/api/pcb/devices/:deviceId', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const device = await pcbIntegration.pcbDevices.findOne({ deviceId });
+
+      if (!device) {
+        return res.status(404).json({ error: 'Device not found' });
+      }
+
+      // Remove sensitive information
+      const sanitizedDevice = {
+        deviceId: device.deviceId,
+        chargePointId: device.chargePointId,
+        deviceName: device.deviceName,
+        status: device.status,
+        isOnline: device.isOnline,
+        lastHeartbeat: device.lastHeartbeat,
+        firmwareVersion: device.firmwareVersion,
+        hardwareVersion: device.hardwareVersion,
+        capabilities: device.capabilities,
+        createdAt: device.createdAt,
+        lastConnection: device.lastConnection
+      };
+
+      res.json(sanitizedDevice);
+    } catch (error) {
+      console.error('❌ Error fetching PCB device:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Send command to PCB device
+  app.post('/api/pcb/devices/:deviceId/command', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const { command, parameters } = req.body;
+
+      if (!command) {
+        return res.status(400).json({ error: 'Command is required' });
+      }
+
+      const result = await pcbIntegration.handlePCBCommand(deviceId, command, parameters);
+      res.json({ message: 'Command sent successfully', result });
+    } catch (error) {
+      console.error('❌ Error sending PCB command:', error);
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Update PCB device status (called by PCB)
+  app.post('/api/pcb/devices/:deviceId/status', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const statusData = req.body;
+
+      // Authenticate device
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization required' });
+      }
+
+      const token = authHeader.replace('Bearer ', '');
+      await pcbIntegration.verifyJWT(token);
+
+      await pcbIntegration.updatePCBStatus(deviceId, statusData);
+      res.json({ message: 'Status updated successfully' });
+    } catch (error) {
+      console.error('❌ Error updating PCB status:', error);
+      res.status(error.message.includes('verification') ? 401 : 500)
+         .json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Refresh device credentials
+  app.post('/api/pcb/devices/:deviceId/refresh-credentials', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const newCredentials = await pcbIntegration.refreshDeviceCredentials(deviceId);
+      
+      res.json({
+        message: 'Credentials refreshed successfully',
+        credentials: newCredentials,
+        note: 'Please update your PCB with the new credentials immediately'
+      });
+    } catch (error) {
+      console.error('❌ Error refreshing credentials:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Revoke PCB device
+  app.delete('/api/pcb/devices/:deviceId', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      await pcbIntegration.revokePCBDevice(deviceId);
+      
+      res.json({ message: 'Device revoked successfully' });
+    } catch (error) {
+      console.error('❌ Error revoking PCB device:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== EXTERNAL WEBSITE CREDENTIALS ENDPOINTS ==========
+  
+  // Generate credentials for external website
+  app.post('/api/external/generate-credentials', async (req, res) => {
+    try {
+      const websiteData = req.body;
+      
+      // Validate required fields
+      if (!websiteData.websiteName || !websiteData.websiteUrl || !websiteData.contactEmail) {
+        return res.status(400).json({ 
+          error: 'websiteName, websiteUrl, and contactEmail are required' 
+        });
+      }
+
+      const credentials = await pcbIntegration.generateWebsiteCredentials(websiteData);
+      
+      res.json({
+        message: 'External website credentials generated successfully',
+        credentials,
+        documentation: {
+          authentication: 'Use Bearer token in Authorization header',
+          rateLimit: 'Check X-RateLimit headers in responses',
+          webhooks: 'Configure webhook URL to receive real-time updates'
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error generating website credentials:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // List external connections
+  app.get('/api/external/connections', async (req, res) => {
+    try {
+      const connections = await pcbIntegration.externalConnections
+        .find({ isActive: true })
+        .project({
+          connectionId: 1,
+          websiteName: 1,
+          websiteUrl: 1,
+          permissions: 1,
+          createdAt: 1,
+          expiresAt: 1,
+          rateLimit: 1
+        })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.json(connections);
+    } catch (error) {
+      console.error('❌ Error fetching external connections:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== EXTERNAL API ENDPOINTS ==========
+  
+  // Middleware for external API authentication
+  const authenticateExternalAPI = async (req, res, next) => {
+    try {
+      const authHeader = req.headers.authorization;
+      const apiKey = req.headers['x-api-key'];
+      
+      if (!authHeader && !apiKey) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      if (authHeader) {
+        const token = authHeader.replace('Bearer ', '');
+        const { decoded } = await pcbIntegration.verifyJWT(token);
+        req.user = decoded;
+      } else if (apiKey) {
+        const connection = await pcbIntegration.externalConnections.findOne({ 
+          apiKey, 
+          isActive: true 
+        });
+        if (!connection) {
+          return res.status(401).json({ error: 'Invalid API key' });
+        }
+        req.user = connection;
+      }
+
+      next();
+    } catch (error) {
+      res.status(401).json({ error: 'Authentication failed' });
+    }
+  };
+
+  // External API: Get charge points
+  app.get('/api/external/charge-points', authenticateExternalAPI, async (req, res) => {
+    try {
+      const chargePoints = await ocppCMS.getAllChargePoints();
+      const connectedPoints = ocppWebSocketServer.getConnectedChargePoints();
+      
+      const response = chargePoints.map(cp => {
+        const connected = connectedPoints.find(c => c.chargePointId === cp.chargePointId);
+        return {
+          chargePointId: cp.chargePointId,
+          status: cp.status,
+          isConnected: !!connected,
+          connectors: cp.connectors?.length || 1,
+          lastHeartbeat: connected?.lastHeartbeat || cp.lastHeartbeat
+        };
+      });
+
+      res.json(response);
+    } catch (error) {
+      console.error('❌ External API error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // External API: Remote start
+  app.post('/api/external/remote-start', authenticateExternalAPI, async (req, res) => {
+    try {
+      const { chargePointId, idTag, connectorId = 1 } = req.body;
+
+      if (!chargePointId || !idTag) {
+        return res.status(400).json({ error: 'chargePointId and idTag are required' });
+      }
+
+      const success = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+      if (success) {
+        res.json({ 
+          message: 'Remote start initiated', 
+          chargePointId, 
+          status: 'accepted' 
+        });
+      } else {
+        res.status(400).json({ 
+          error: 'Remote start failed',
+          chargePointId,
+          status: 'rejected'
+        });
+      }
+    } catch (error) {
+      console.error('❌ External remote start error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // External API: Remote stop
+  app.post('/api/external/remote-stop', authenticateExternalAPI, async (req, res) => {
+    try {
+      const { chargePointId, transactionId } = req.body;
+
+      if (!chargePointId || !transactionId) {
+        return res.status(400).json({ error: 'chargePointId and transactionId are required' });
+      }
+
+      const success = await ocppWebSocketServer.remoteStopTransaction(chargePointId, transactionId);
+      
+      if (success) {
+        res.json({ 
+          message: 'Remote stop initiated', 
+          chargePointId, 
+          transactionId,
+          status: 'accepted' 
+        });
+      } else {
+        res.status(400).json({ 
+          error: 'Remote stop failed',
+          chargePointId,
+          transactionId,
+          status: 'rejected'
+        });
+      }
+    } catch (error) {
+      console.error('❌ External remote stop error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // External API: Get transactions
+  app.get('/api/external/transactions', authenticateExternalAPI, async (req, res) => {
+    try {
+      const { chargePointId, status, limit = 50 } = req.query;
+      
+      let query = {};
+      if (chargePointId) query.chargePointId = chargePointId;
+      if (status) query.status = status;
+
+      const transactions = await db.collection('ocppTransactions')
+        .find(query)
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .project({
+          transactionId: 1,
+          chargePointId: 1,
+          connectorId: 1,
+          status: 1,
+          startTimestamp: 1,
+          stopTimestamp: 1,
+          energyDelivered: 1
+        })
+        .toArray();
+
+      res.json(transactions);
+    } catch (error) {
+      console.error('❌ External transactions API error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== PCB AUTHENTICATION ENDPOINT =====
+  
+  // PCB device authentication
+  app.post('/api/pcb/authenticate', async (req, res) => {
+    try {
+      const { apiKey, deviceSecret } = req.body;
+      
+      if (!apiKey) {
+        return res.status(400).json({ error: 'API key is required' });
+      }
+
+      const device = await pcbIntegration.authenticatePCBDevice(apiKey, deviceSecret);
+      const credentials = await pcbIntegration.generateConnectionCredentials(device.deviceId);
+      
+      res.json({
+        message: 'Authentication successful',
+        deviceId: device.deviceId,
+        connectionCredentials: credentials,
+        serverTime: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('❌ PCB authentication error:', error);
+      res.status(401).json({ error: error.message });
+    }
+  });
+
+  console.log('✅ PCB Integration API endpoints initialized');
+  
+  // ... rest of your existing code ...
+});
 
 const app = express();
 app.use(cors());
