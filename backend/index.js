@@ -2363,6 +2363,57 @@ connectDB().then((db) => {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
+  // Add to your backend server.js
+app.post('/api/orders/:orderId/credentials', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { ocppCredentials, generatedAt } = req.body;
+
+    // Update the order with OCPP credentials
+    await db.collection('orders').updateOne(
+      { _id: new ObjectId(orderId) },
+      { 
+        $set: { 
+          ocppCredentials,
+          credentialsGeneratedAt: generatedAt,
+          updatedAt: new Date()
+        } 
+      }
+    );
+
+    res.json({ message: 'Credentials saved successfully' });
+  } catch (error) {
+    console.error('Error saving credentials:', error);
+    res.status(500).json({ error: 'Failed to save credentials' });
+  }
+});
+
+// Get order with credentials
+app.get('/api/orders/:orderId/credentials', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    
+    const order = await db.collection('orders').findOne({ 
+      _id: new ObjectId(orderId) 
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    res.json({
+      orderId: order._id,
+      customerName: `${order.firstName} ${order.lastName}`,
+      email: order.email,
+      charger: order.charger,
+      ocppCredentials: order.ocppCredentials,
+      generatedAt: order.credentialsGeneratedAt
+    });
+  } catch (error) {
+    console.error('Error fetching order credentials:', error);
+    res.status(500).json({ error: 'Failed to fetch credentials' });
+  }
+});
 
   // Get all PCB devices
   app.get('/api/pcb/devices', async (req, res) => {
