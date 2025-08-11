@@ -457,7 +457,263 @@ class OCPPWebSocketServer {
     }
     return connected;
   }
+  // Add these methods to your OCPPWebSocketServer class in ocpp-websocket-server.js
 
+// Custom message sending method for ESP devices
+async sendCustomMessage(chargePointId, action, payload) {
+  const chargePoint = this.chargePoints.get(chargePointId);
+  
+  if (!chargePoint || chargePoint.ws.readyState !== WebSocket.OPEN) {
+    throw new Error(`Charge point ${chargePointId} not connected`);
+  }
+
+  return new Promise((resolve, reject) => {
+    const messageId = uuidv4();
+    // Using OCPP format: [MessageType, MessageId, Action, Payload]
+    const message = [2, messageId, action, payload];
+    
+    this.pendingMessages.set(messageId, {
+      action,
+      resolve,
+      reject,
+      timestamp: new Date()
+    });
+
+    // Log outgoing message
+    this.cms.logMessage({
+      chargePointId,
+      messageType: 2,
+      direction: 'outgoing',
+      messageId,
+      action,
+      payload
+    });
+
+    console.log(`📤 Sending custom message to ESP ${chargePointId}:`, { action, payload });
+    chargePoint.ws.send(JSON.stringify(message));
+
+    // Set timeout for response
+    setTimeout(() => {
+      if (this.pendingMessages.has(messageId)) {
+        this.pendingMessages.delete(messageId);
+        reject(new Error('Custom message timeout'));
+      }
+    }, 30000);
+  });
+}
+
+// Add custom message handlers for ESP responses
+initializeCustomMessageHandlers() {
+  // Handle ESP charging confirmation
+  this.messageHandlers.set('ChargingStartConfirmation', async (chargePointId, payload) => {
+    console.log(`✅ ESP charging start confirmed from ${chargePointId}:`, payload);
+    
+    // Store confirmation in database
+    if (payload.orderId) {
+      await this.db.collection('orders').updateOne(
+        { _id: new ObjectId(payload.orderId) },
+        {
+          $set: {
+            espStartConfirmed: true,
+            espStartConfirmedAt: new Date(),
+            espMessage: payload.message || 'Charging started successfully'
+          }
+        }
+      );
+    }
+
+    return {
+      status: 'Received',
+      timestamp: new Date().toISOString()
+    };
+  });
+
+  // Handle ESP charging stop confirmation
+  this.messageHandlers.set('ChargingStopConfirmation', async (chargePointId, payload) => {
+    console.log(`✅ ESP charging stop confirmed from ${chargePointId}:`, payload);
+    
+    // Store confirmation in database
+    if (payload.orderId) {
+      await this.db.collection('orders').updateOne(
+        { _id: new ObjectId(payload.orderId) },
+        {
+          $set: {
+            espStopConfirmed: true,
+            espStopConfirmedAt: new Date(),
+            espFinalMessage: payload.message || 'Charging stopped successfully',
+            espFinalDuration: payload.actualDuration,
+            espFinalPower: payload.actualPower
+          }
+        }
+      );
+    }
+
+    return {
+      status: 'Received',
+      timestamp: new Date().toISOString()
+    };
+  });
+
+  // Handle ESP status response
+  this.messageHandlers.set('StatusResponse', async (chargePointId, payload) => {
+    console.log(`📊 ESP status response from ${chargePointId}:`, payload);
+    
+    // Update charge point status
+    await this.cms.updateChargePointStatus(chargePointId, {
+      espStatus: payload.status,
+      espLastUpdate: new Date(),
+      espData: payload
+    });
+
+    return {
+      status: 'Received',
+      timestamp: new Date().toISOString()
+    };
+  });
+
+  // Handle ESP error reports
+  this.messageHandlers.set('ErrorReport', async (chargePointId, payload) => {
+    console.error(`❌ ESP error report from ${chargePointId}:`, payload);
+    
+    // Log error in database
+    await this.db.collection('espErrors').insertOne({
+      chargePointId,
+      errorCode: payload.errorCode,
+      errorMessage: payload.errorMessage,
+      orderId: payload.orderId,
+      timestamp: new Date(),
+      payload
+    });
+
+    return {
+      status: 'ErrorReceived',
+      timestamp: new Date().toISOString()
+    };
+  });
+}
+
+// Enhanced initialization to include custom handlers
+async initialize() {
+  try {
+    // Initialize default configuration
+    await this.cms.initializeDefaultConfig();
+    
+    // Initialize both standard and custom message handlers
+    this.initializeMessageHandlers();
+    this.initializeCustomMessageHandlers();
+    
+    // Start WebSocket server
+    this.wss = new WebSocket.Server({ 
+      port: this.port,
+      path: '/',
+      verifyClient: (info) => {
+        console.log(`🔌 WebSocket connection attempt from: ${info.origin || 'unknown'}`);
+        return true;
+      }
+    });
+
+    this.wss.on('connection', (ws, req) => {
+      this.handleConnection(ws, req);
+    });
+
+    console.log(`🚀 OCPP WebSocket Server started on port ${this.port}`);
+    
+    // Start heartbeat monitoring
+    this.startHeartbeatMonitoring();
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to initialize OCPP server:', error);
+    throw error;
+  }
+}
+
+// Method to send charging start notification
+async notifyChargingStart(chargePointId, orderData) {
+  try {
+    const startMessage = {
+      command: 'START_CHARGING',
+      orderId: orderData._id.toString(),
+      customerName: `${orderData.firstName} ${orderData.lastName}`,
+      customerPhone: orderData.phone,
+      customerEmail: orderData.email,
+      paymentConfirmed: true,
+      timestamp: new Date().toISOString()
+    };
+    
+    const response = await this.sendCustomMessage(chargePointId, 'ChargingStart', startMessage);
+    console.log('✅ ESP notified of charging start:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Failed to notify ESP of charging start:', error);
+    throw error;
+  }
+}
+
+// Method to send charging stop notification
+async notifyChargingStop(chargePointId, orderData, chargingData) {
+  try {
+    const stopMessage = {
+      command: 'STOP_CHARGING',
+      orderId: orderData._id.toString(),
+      customerName: `${orderData.firstName} ${orderData.lastName}`,
+      customerPhone: orderData.phone,
+      chargingDuration: chargingData.durationSeconds,
+      finalAmount: chargingData.amountPaid,
+      powerDelivered: chargingData.powerKW,
+      stopReason: chargingData.stopReason || 'user_requested',
+      timestamp: new Date().toISOString()
+    };
+    
+    const response = await this.sendCustomMessage(chargePointId, 'ChargingStop', stopMessage);
+    console.log('✅ ESP notified of charging stop:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Failed to notify ESP of charging stop:', error);
+    throw error;
+  }
+}
+
+// Method to get all charge point statuses including ESP data
+getAllChargePointStatuses() {
+  const statuses = [];
+  for (const [id, chargePoint] of this.chargePoints) {
+    statuses.push({
+      chargePointId: id,
+      isConnected: true,
+      connectedAt: chargePoint.connectedAt,
+      lastHeartbeat: chargePoint.lastHeartbeat,
+      status: chargePoint.status,
+      wsReadyState: chargePoint.ws.readyState,
+      canReceiveMessages: chargePoint.ws.readyState === WebSocket.OPEN
+    });
+  }
+  return statuses;
+}
+
+// Method to broadcast message to all connected ESP devices
+async broadcastToAllESP(action, payload) {
+  const results = [];
+  
+  for (const [chargePointId] of this.chargePoints) {
+    try {
+      const response = await this.sendCustomMessage(chargePointId, action, payload);
+      results.push({
+        chargePointId,
+        success: true,
+        response
+      });
+    } catch (error) {
+      results.push({
+        chargePointId,
+        success: false,
+        error: error.message
+      });
+    }
+  }
+  
+  return results;
+}
   // Get charge point status
   async getChargePointStatus(chargePointId) {
     const connected = this.chargePoints.get(chargePointId);
