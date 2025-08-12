@@ -26,14 +26,18 @@ let ocppCMS = null;
 let pcbIntegration = null;
 
 // Middleware
+// app.use(cors({
+//   origin: [
+//     'http://localhost:3000', 
+//     'https://www.ntevstore.nl',
+//     process.env.CORS_ORIGIN || '*'
+//   ],
+//   credentials: true
+// }));
 app.use(cors({
-  origin: [
-    'http://localhost:3000', 
-    'https://your-frontend-domain.com',
-    process.env.CORS_ORIGIN || '*'
-  ],
-  credentials: true
+  origin: '*'
 }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
