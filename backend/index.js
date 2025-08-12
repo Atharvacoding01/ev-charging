@@ -3,11 +3,10 @@ import { dirname } from 'path';
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
-import { MongoClient } from 'mongodb';
 import OCPPWebSocketServer from './ocpp/ocpp-websocket-server.js';
 import OCPPCMSConfig from './ocpp/ocpp-cms-config.js';
 import OCPPPCBIntegration from './ocpp/ocpp-pcb-integration.js';
-import connectDB from './config/mongo.js';  // Add this import
+import connectDB from './config/mongo.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -66,8 +65,9 @@ function customFetch(url, options = {}) {
   });
 }
 
-// After connecting to MongoDB, initialize OCPP server and all other services
+// After connecting to MongoDB, initialize OCPP server
 connectDB().then((db) => {
+  // Initialize collections
   const chargers = db.collection('chargers');
   const orders = db.collection('orders');
   const chargingStatus = db.collection('chargingStatus');
@@ -75,10 +75,10 @@ connectDB().then((db) => {
 
   console.log("✅ Connected to MongoDB collections");
 
-  // Initialize OCPP services
+  // Initialize OCPP services with CMS config
   ocppCMS = new OCPPCMSConfig(db);
-  ocppWebSocketServer = new OCPPWebSocketServer(db, server); // Pass HTTP server instance
-  
+  ocppWebSocketServer = new OCPPWebSocketServer(db, server, ocppCMS);
+
   // Start OCPP WebSocket Server (will attach to existing HTTP server)
   ocppWebSocketServer.initialize().then(() => {
     console.log('✅ OCPP WebSocket Server initialized on same port');
@@ -2001,7 +2001,7 @@ connectDB().then((db) => {
   console.log('✅ All API endpoints initialized with single-port OCPP integration');
   
 }).catch(err => {
-  console.error("❌ MongoDB connection failed:", err);
+  console.error('❌ MongoDB connection failed:', err);
   process.exit(1);
 });
 
