@@ -84,7 +84,7 @@ async function initializeDatabase() {
   try {
     // Use environment variable for MongoDB URI
     const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017';
-    const dbName = process.env.DB_NAME || 'evcharging';
+    const dbName = process.env.DB_NAME || 'test';
     
     console.log('🔄 Connecting to MongoDB Atlas...'); 
     
