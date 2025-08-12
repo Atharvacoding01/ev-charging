@@ -6,11 +6,9 @@ import { MongoClient, ObjectId } from 'mongodb';
 class OCPPCMSConfig {
   constructor(database) {
     this.db = database;
-    this.ocppConfigs = database.collection('ocppConfigs');
     this.chargePoints = database.collection('chargePoints');
-    this.transactions = database.collection('ocppTransactions');
-    this.meterValues = database.collection('ocppMeterValues');
-    this.logs = database.collection('ocppLogs');
+    this.transactions = database.collection('transactions');
+    this.users = database.collection('users');
   }
 
   // Initialize default OCPP configuration
@@ -138,25 +136,37 @@ class OCPPCMSConfig {
     }
   }
 
-  // Update charge point status
-  async updateChargePointStatus(chargePointId, statusData) {
-    try {
-      const updateData = {
-        ...statusData,
-        lastHeartbeat: new Date(),
-        updatedAt: new Date()
-      };
+  async getChargePoint(chargePointId) {
+    return await this.chargePoints.findOne({ chargePointId });
+  }
 
-      const result = await this.chargePoints.updateOne(
-        { chargePointId },
-        { $set: updateData }
-      );
+  async updateChargePointStatus(chargePointId, status) {
+    return await this.chargePoints.updateOne(
+      { chargePointId },
+      { 
+        $set: { 
+          status,
+          lastUpdated: new Date()
+        }
+      },
+      { upsert: true }
+    );
+  }
 
-      return result;
-    } catch (error) {
-      console.error('❌ Error updating charge point status:', error);
-      throw error;
-    }
+  async saveTransaction(transaction) {
+    return await this.transactions.insertOne({
+      ...transaction,
+      createdAt: new Date()
+    });
+  }
+
+  async validateUser(idTag) {
+    const user = await this.users.findOne({ idTag });
+    return {
+      status: user ? 'Accepted' : 'Invalid',
+      expiryDate: user?.expiryDate || null,
+      parentIdTag: user?.parentIdTag || null
+    };
   }
 
   // Update connector status
@@ -298,16 +308,6 @@ class OCPPCMSConfig {
       return await this.chargePoints.find({}).sort({ registeredAt: -1 }).toArray();
     } catch (error) {
       console.error('❌ Error getting charge points:', error);
-      throw error;
-    }
-  }
-
-  // Get charge point by ID
-  async getChargePoint(chargePointId) {
-    try {
-      return await this.chargePoints.findOne({ chargePointId });
-    } catch (error) {
-      console.error('❌ Error getting charge point:', error);
       throw error;
     }
   }

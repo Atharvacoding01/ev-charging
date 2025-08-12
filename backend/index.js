@@ -1,17 +1,10 @@
-import express from 'express';
-import { ObjectId } from 'mongodb';
-import cors from 'cors';
-import https from 'https';
-import http from 'http';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import fs from 'fs';
-import path from 'path';
-
-// OCPP imports
+import express from 'express';
+import cors from 'cors';
+import http from 'http';
 import OCPPWebSocketServer from './ocpp/ocpp-websocket-server.js';
 import OCPPCMSConfig from './ocpp/ocpp-cms-config.js';
-import connectDB from './config/mongo.js';
 import OCPPPCBIntegration from './ocpp/ocpp-pcb-integration.js';
 
 const __filename = fileURLToPath(import.meta.url);
