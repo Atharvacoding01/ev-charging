@@ -80,9 +80,8 @@ function customFetch(url, options = {}) {
 // Database initialization
 async function initializeDatabase() {
   try {
-    const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:27017', {
-      useUnifiedTopology: true,
-    });
+    const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:27017');
+    // useUnifiedTopology option removed since it's no longer needed
     
     await client.connect();
     console.log('✅ Connected to MongoDB');
