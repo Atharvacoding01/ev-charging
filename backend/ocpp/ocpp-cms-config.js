@@ -11,12 +11,14 @@ class OCPPCMSConfig {
     this.users = database.collection('users');
     this.messages = database.collection('ocppMessages');
     this.config = database.collection('ocppConfig');
+    this.meterValues = database.collection('meterValues');
+    this.logs = database.collection('ocppLogs');
   }
 
   // Initialize default OCPP configuration
   async initializeDefaultConfig() {
     try {
-      const existingConfig = await this.ocppConfigs.findOne({ type: 'default' });
+      const existingConfig = await this.config.findOne({ type: 'default' });
       
       if (!existingConfig) {
         const defaultConfig = {
@@ -45,7 +47,7 @@ class OCPPCMSConfig {
           updatedAt: new Date()
         };
 
-        await this.ocppConfigs.insertOne(defaultConfig);
+        await this.config.insertOne(defaultConfig);
         console.log('✅ Default OCPP configuration initialized');
         return defaultConfig;
       }
@@ -61,9 +63,9 @@ class OCPPCMSConfig {
   async getConfig(configId = null) {
     try {
       if (configId && ObjectId.isValid(configId)) {
-        return await this.ocppConfigs.findOne({ _id: new ObjectId(configId) });
+        return await this.config.findOne({ _id: new ObjectId(configId) });
       } else {
-        return await this.ocppConfigs.findOne({ type: 'default' });
+        return await this.config.findOne({ type: 'default' });
       }
     } catch (error) {
       console.error('❌ Error getting OCPP config:', error);
@@ -81,12 +83,12 @@ class OCPPCMSConfig {
 
       let result;
       if (configId && ObjectId.isValid(configId)) {
-        result = await this.ocppConfigs.updateOne(
+        result = await this.config.updateOne(
           { _id: new ObjectId(configId) },
           { $set: updateData }
         );
       } else {
-        result = await this.ocppConfigs.updateOne(
+        result = await this.config.updateOne(
           { type: 'default' },
           { $set: updateData },
           { upsert: true }
