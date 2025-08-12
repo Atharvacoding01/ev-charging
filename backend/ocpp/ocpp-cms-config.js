@@ -10,7 +10,7 @@ class OCPPCMSConfig {
     this.transactions = database.collection('transactions');
     this.users = database.collection('users');
     this.messages = database.collection('ocppMessages');
-    this.config = database.collection('ocppConfig'); // <-- Add this line
+    this.config = database.collection('ocppConfig');
   }
 
   // Initialize default OCPP configuration
