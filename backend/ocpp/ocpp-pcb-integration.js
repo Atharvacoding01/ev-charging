@@ -1,19 +1,13 @@
-// ===== ENHANCED OCPP SERVER WITH PCB INTEGRATION =====
-// backend/ocpp/ocpp-pcb-integration.js
-
-const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
+import { MongoClient } from 'mongodb';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 class OCPPPCBIntegration {
   constructor(database) {
     this.db = database;
-    this.pcbDevices = database.collection('pcbDevices');
-    this.deviceCredentials = database.collection('deviceCredentials');
-    this.deviceSessions = database.collection('deviceSessions');
-    this.externalConnections = database.collection('externalConnections');
-    
-    // JWT secret for device authentication
-    this.JWT_SECRET = process.env.OCPP_JWT_SECRET || 'your-secure-jwt-secret-here';
+    this.pcbDevices = this.db.collection('pcbDevices');
+    this.externalConnections = this.db.collection('externalConnections');
+    this.JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
   }
 
   // ========== PCB DEVICE REGISTRATION ==========
@@ -453,4 +447,4 @@ class OCPPPCBIntegration {
   }
 }
 
-module.exports = OCPPPCBIntegration;
+export default OCPPPCBIntegration;
