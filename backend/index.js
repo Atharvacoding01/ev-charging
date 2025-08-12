@@ -1,13 +1,20 @@
-const express = require('express');
-const { ObjectId } = require('mongodb');
-const connectDB = require('./config/mongo');
-const cors = require('cors');
-const https = require('https');
-const http = require('http');
+import express from 'express';
+import { ObjectId } from 'mongodb';
+import cors from 'cors';
+import https from 'https';
+import http from 'http';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import fs from 'fs';
+import path from 'path';
 
 // OCPP imports
-const OCPPWebSocketServer = require('./ocpp/ocpp-websocket-server');
-const OCPPCMSConfig = require('./ocpp/ocpp-cms-config');
+import OCPPWebSocketServer from './ocpp/ocpp-websocket-server.js';
+import OCPPCMSConfig from './ocpp/ocpp-cms-config.js';
+import connectDB from './config/mongo.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // ===== PCB INTEGRATION API ENDPOINTS =====
 // Add this import at the top of your server.js
@@ -16,6 +23,7 @@ const OCPPPCBIntegration = require('./ocpp/ocpp-pcb-integration');
 // Add this after your database connection
 let pcbIntegration = null;
 
+// Create express app
 const app = express();
 app.use(cors());
 app.use(express.json());

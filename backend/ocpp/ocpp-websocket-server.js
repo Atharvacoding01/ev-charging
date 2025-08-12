@@ -1,13 +1,16 @@
 // ===== ENHANCED OCPP WEBSOCKET SERVER - SINGLE PORT INTEGRATION =====
 // backend/ocpp/ocpp-websocket-server.js
 
-const WebSocket = require('ws');
-const { v4: uuidv4 } = require('uuid');
-const OCPPCMSConfig = require('./ocpp-cms-config');
-const { ObjectId } = require('mongodb');
-const fs = require('fs');
-const https = require('https');
-const path = require('path');
+import WebSocket from 'ws';
+import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
+import https from 'https';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 class OCPPWebSocketServer {
   constructor(database, httpServer = null) {
@@ -766,24 +769,4 @@ class OCPPWebSocketServer {
   }
 }
 
-// Add SSL configuration
-const sslOptions = {
-  key: fs.readFileSync(path.join(__dirname, 'certificates/private.key')),
-  cert: fs.readFileSync(path.join(__dirname, 'certificates/certificate.crt')),
-  // If you have intermediate certificates:
-  // ca: fs.readFileSync(path.join(__dirname, 'certificates/ca_bundle.crt'))
-};
-
-// Create HTTPS server instead of HTTP
-const server = https.createServer(sslOptions, app);
-
-// Initialize OCPP services with the HTTP server instance
-ocppCMS = new OCPPCMSConfig(db);
-ocppWebSocketServer = new OCPPWebSocketServer(db, server, {
-  path: '/' // This will make it listen on root path instead of /ocpp
-});
-
-// Initialize WebSocket server with secure options
-await ocppWebSocketServer.initialize();
-
-module.exports = OCPPWebSocketServer;
+export default OCPPWebSocketServer;
