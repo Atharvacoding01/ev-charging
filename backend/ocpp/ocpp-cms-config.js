@@ -9,6 +9,8 @@ class OCPPCMSConfig {
     this.chargePoints = database.collection('chargePoints');
     this.transactions = database.collection('transactions');
     this.users = database.collection('users');
+    this.messages = database.collection('ocppMessages');
+    this.config = database.collection('ocppConfig'); // <-- Add this line
   }
 
   // Initialize default OCPP configuration
