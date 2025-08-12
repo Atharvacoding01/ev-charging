@@ -17,7 +17,7 @@ const __dirname = dirname(__filename);
 class OCPPWebSocketServer {
   constructor(database, httpServer = null) {
     this.db = database;
-    this.config = new OCPPCMSConfig(database);
+    this.cms = new OCPPCMSConfig(database);
     this.wss = null;
     this.httpServer = httpServer; // HTTP server to attach WebSocket to
     this.chargePoints = new Map();
