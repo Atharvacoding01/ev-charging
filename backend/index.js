@@ -3,9 +3,11 @@ import { dirname } from 'path';
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
+import { MongoClient } from 'mongodb';
 import OCPPWebSocketServer from './ocpp/ocpp-websocket-server.js';
 import OCPPCMSConfig from './ocpp/ocpp-cms-config.js';
 import OCPPPCBIntegration from './ocpp/ocpp-pcb-integration.js';
+import connectDB from './config/mongo.js';  // Add this import
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
