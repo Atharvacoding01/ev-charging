@@ -8,7 +8,7 @@ import https from 'https';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import OCPPCMSConfig from './ocpp/ocpp-cms-config.js'; // adjust path as needed
+import OCPPCMSConfig from './ocpp-cms-config.js'; // adjust path as needed
 
 
 const __filename = fileURLToPath(import.meta.url);
