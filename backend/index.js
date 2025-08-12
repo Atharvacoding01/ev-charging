@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 // ===== INTEGRATED EV CHARGING BACKEND =====
 // backend/index.js - Main server entry point
 
@@ -80,13 +82,22 @@ function customFetch(url, options = {}) {
 // Database initialization
 async function initializeDatabase() {
   try {
-    const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:27017');
-    // useUnifiedTopology option removed since it's no longer needed
+    // Use environment variable for MongoDB URI
+    const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017';
+    const dbName = process.env.DB_NAME || 'evcharging';
+    
+    console.log('🔄 Connecting to MongoDB Atlas...'); 
+    
+    const client = new MongoClient(mongoUri, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 50
+    });
     
     await client.connect();
-    console.log('✅ Connected to MongoDB');
+    console.log('✅ Connected to MongoDB Atlas');
     
-    db = client.db(process.env.DB_NAME || 'evcharging');
+    db = client.db(dbName);
     
     // Create indexes for better performance
     const chargers = db.collection('chargers');
@@ -106,9 +117,14 @@ async function initializeDatabase() {
     console.log("✅ Database indexes created");
     
     return db;
+
   } catch (error) {
-    console.error('❌ MongoDB connection failed:', error);
-    process.exit(1);
+    console.error('❌ MongoDB connection failed:', {
+      error: error.message,
+      code: error.code,
+      uri: '[REDACTED]' // Hide connection string for security
+    });
+    throw error;
   }
 }
 
@@ -759,776 +775,231 @@ async function startServer() {
               );
               
               if (ocppStarted) {
-                console.log('✅ OCPP remote start successful');
-                
-                // Send charging start notification to ESP device
-                try {
-                  const startMessage = {
-                    command: 'START_CHARGING',
-                    orderId: id,
-                    customerName: `${order.firstName} ${order.lastName}`,
-                    customerPhone: order.phone,
-                    timestamp: new Date().toISOString(),
-                    paymentConfirmed: true
-                  };
-                  
-                  await ocppWebSocketServer.notifyChargingStart(order.charger.chargerId, order);
-                  espNotified = true;
-                  console.log('✅ ESP device notified of charging start');
-                } catch (notifyError) {
-                  console.error('⚠️ Failed to send start notification to ESP:', notifyError);
-                }
+                console.log(`✅ OCPP remote start successful for order: ${id}`);
+              } else {
+                console.warn(`❌ OCPP remote start failed for order: ${id}`);
               }
             } else {
-              console.log('⚠️ Charge point not connected via OCPP');
+              console.error(`❌ Charge point not connected: ${order.charger.chargerId}`);
             }
           } catch (ocppError) {
-            console.error('❌ OCPP remote start error:', ocppError);
+            console.error(`❌ OCPP remote start error: ${ocppError.message}`);
           }
+        } else {
+          console.error(`❌ Charger information missing in order: ${id}`);
         }
 
-        // Update order to mark charging as started
-        await orders.updateOne(
-          { _id: new ObjectId(id) },
-          {
-            $set: {
-              chargingStarted: true,
-              chargingStartedAt: new Date(),
-              status: 'charging',
-              ocppControlled: ocppStarted,
-              espNotified: espNotified,
-              updatedAt: new Date()
-            }
-          }
-        );
-
-        console.log(`✅ Charging started for order: ${id} (OCPP: ${ocppStarted}, ESP: ${espNotified})`);
-        
-        res.json({ 
-          message: "Charging started", 
-          orderId: id,
-          ocppControlled: ocppStarted,
-          espNotified: espNotified
-        });
-      } catch (err) {
-        console.error('❌ Error starting charging:', err);
-        res.status(500).json({ error: "Internal error" });
-      }
-    });
-
-    // Enhanced charging status endpoint
-    app.post('/api/charging/status', async (req, res) => {
-      try {
-        const { orderId, startTime, endTime, durationSeconds, amountPaid, powerKW, stopReason } = req.body;
-        if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid data" });
-
-        const order = await orders.findOne({ _id: new ObjectId(orderId) });
-        if (!order) return res.status(404).json({ error: "Order not found" });
-
-        // Send stop notification to ESP device
-        let espStopNotified = false;
-        if (order.charger && order.charger.chargerId) {
-          try {
-            const chargingData = {
-              orderId,
-              startTime,
-              endTime,
-              durationSeconds,
-              amountPaid: parseFloat(amountPaid) || 0,
-              powerKW: parseFloat(powerKW) || 0,
-              stopReason: stopReason || 'user_requested'
-            };
-            
-            await ocppWebSocketServer.notifyChargingStop(order.charger.chargerId, order, chargingData);
-            espStopNotified = true;
-            console.log('✅ ESP device notified of charging stop');
-          } catch (notifyError) {
-            console.error('⚠️ Failed to send stop notification to ESP:', notifyError);
-          }
+        // Notify ESP about charging start
+        try {
+          const notifyResponse = await ocppWebSocketServer.notifyChargingStart(order.charger.chargerId, order);
+          espNotified = notifyResponse.success;
+          console.log(`📡 ESP notification ${espNotified ? 'succeeded' : 'failed'} for order: ${id}`);
+        } catch (notifyError) {
+          console.error(`❌ ESP notification error: ${notifyError.message}`);
         }
 
-        const chargingStatusData = {
-          orderId: new ObjectId(orderId),
-          startTime: new Date(startTime),
-          endTime: endTime ? new Date(endTime) : new Date(),
-          durationSeconds,
-          amountPaid: parseFloat(amountPaid) || 0,
-          powerKW: parseFloat(powerKW) || 0,
-          userPhone: order.phone,
-          userEmail: order.email,
-          userName: `${order.firstName} ${order.lastName}`,
-          charger: order.charger,
-          stopReason: stopReason || 'user_requested',
-          espStopNotified: espStopNotified,
-          createdAt: new Date()
-        };
-
-        const result = await chargingStatus.insertOne(chargingStatusData);
-
-        await orders.updateOne(
-          { _id: new ObjectId(orderId) },
-          {
-            $set: {
-              chargingCompleted: true,
-              chargingCompletedAt: new Date(),
-              status: 'completed',
-              finalAmount: parseFloat(amountPaid) || 0,
-              espStopNotified: espStopNotified,
-              updatedAt: new Date()
-            }
+        res.json({
+          success: true,
+          message: 'Charging start process initiated',
+          data: {
+            ocppStarted,
+            espNotified
           }
-        );
-
-        console.log(`✅ Charging session completed for order: ${orderId} (ESP Stop Notified: ${espStopNotified})`);
-        res.status(200).json({ 
-          message: "Charging session saved", 
-          id: result.insertedId,
-          espStopNotified: espStopNotified 
-        });
-      } catch (err) {
-        console.error('❌ Error saving charging session:', err);
-        res.status(500).json({ error: "Internal error" });
-      }
-    });
-
-    // Get charging sessions
-    app.get('/api/charging/sessions', async (req, res) => {
-      try {
-        const sessions = await chargingStatus.find({}).sort({ createdAt: -1 }).toArray();
-        res.json(sessions);
-      } catch (err) {
-        console.error('❌ Error fetching charging sessions:', err);
-        res.status(500).json({ error: "Internal error" });
-      }
-    });
-
-    // Get charging sessions for specific order
-    app.get('/api/charging/sessions/:orderId', async (req, res) => {
-      try {
-        const orderId = req.params.orderId;
-        if (!ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid ID" });
-
-        const sessions = await chargingStatus.find({ orderId: new ObjectId(orderId) }).toArray();
-        res.json(sessions);
-      } catch (err) {
-        console.error('❌ Error fetching charging sessions for order:', err);
-        res.status(500).json({ error: "Internal error" });
-      }
-    });
-
-    // ========== OWNER SESSION ENDPOINTS ==========
-    
-    app.post('/api/owner-sessions', async (req, res) => {
-      try {
-        const { charger, isOwner, timestamp } = req.body;
-        
-        const ownerSession = {
-          charger,
-          isOwner: true,
-          timestamp: timestamp || new Date().toISOString(),
-          sessionType: 'owner',
-          paid: true,
-          paymentStatus: 'owner_session',
-          createdAt: new Date(),
-          status: 'active'
-        };
-        
-        const result = await ownerSessions.insertOne(ownerSession);
-        console.log(`✅ Owner session created: ${result.insertedId}`);
-        
-        res.json({ 
-          message: "Owner session created", 
-          sessionId: result.insertedId,
-          session: ownerSession 
         });
       } catch (error) {
-        console.error('❌ Error creating owner session:', error);
-        res.status(500).json({ error: "Failed to create owner session" });
-      }
-    });
-
-    app.get('/api/owner-sessions/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).json({ error: "Invalid session ID" });
-        }
-        
-        const ownerSession = await ownerSessions.findOne({ _id: new ObjectId(id) });
-        if (!ownerSession) {
-          return res.status(404).json({ error: "Owner session not found" });
-        }
-        
-        res.json(ownerSession);
-      } catch (error) {
-        console.error('❌ Error fetching owner session:', error);
+        console.error('❌ Error starting charging:', error);
         res.status(500).json({ error: "Internal server error" });
       }
     });
 
-    // ========== CMS ENDPOINTS ==========
-    
-    // Get CMS dashboard data
-    app.get('/api/cms/dashboard', async (req, res) => {
+    // Enhanced stop charging with ESP device messaging
+    app.post('/api/charging/stop/:id', async (req, res) => {
       try {
-        const totalChargePoints = await db.collection('chargePoints').countDocuments();
-        const connectedChargePoints = ocppWebSocketServer.getConnectedChargePoints().length;
-        const activeTransactions = await db.collection('ocppTransactions').countDocuments({ status: 'active' });
-        const totalTransactions = await db.collection('ocppTransactions').countDocuments();
-        const totalOrders = await orders.countDocuments();
-        const paidOrders = await orders.countDocuments({ paid: true });
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid order ID" });
 
-        const recentTransactions = await db.collection('ocppTransactions')
-          .find({})
-          .sort({ createdAt: -1 })
-          .limit(5)
-          .toArray();
+        // Check if order exists
+        const order = await orders.findOne({ _id: new ObjectId(id) });
+        if (!order) {
+          console.error(`❌ Order not found for charging stop: ${id}`);
+          return res.status(404).json({ error: "Order not found" });
+        }
 
-        const chargePointStatuses = await db.collection('chargePoints')
-          .aggregate([
-            { $group: { _id: '$status', count: { $sum: 1 } } }
-          ])
-          .toArray();
+        // Try OCPP remote stop and ESP notification
+        let ocppStopped = false;
+        let espNotified = false;
+        
+        if (order.charger && order.charger.chargerId) {
+          try {
+            const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
+            if (chargePointStatus && chargePointStatus.isConnected) {
+              console.log('🔌 Attempting OCPP remote stop...');
+              
+              // Send remote stop command to ESP device
+              ocppStopped = await ocppWebSocketServer.remoteStopTransaction(
+                order.charger.chargerId, 
+                order.transactionId // Use order transaction ID
+              );
+              
+              if (ocppStopped) {
+                console.log(`✅ OCPP remote stop successful for order: ${id}`);
+              } else {
+                console.warn(`❌ OCPP remote stop failed for order: ${id}`);
+              }
+            } else {
+              console.error(`❌ Charge point not connected: ${order.charger.chargerId}`);
+            }
+          } catch (ocppError) {
+            console.error(`❌ OCPP remote stop error: ${ocppError.message}`);
+          }
+        } else {
+          console.error(`❌ Charger information missing in order: ${id}`);
+        }
+
+        // Notify ESP about charging stop
+        try {
+          const notifyResponse = await ocppWebSocketServer.notifyChargingStop(order.charger.chargerId, order);
+          espNotified = notifyResponse.success;
+          console.log(`📡 ESP notification ${espNotified ? 'succeeded' : 'failed'} for order: ${id}`);
+        } catch (notifyError) {
+          console.error(`❌ ESP notification error: ${notifyError.message}`);
+        }
 
         res.json({
-          statistics: {
-            totalChargePoints,
-            connectedChargePoints,
-            activeTransactions,
-            totalTransactions,
-            totalOrders,
-            paidOrders,
-            connectionRate: totalChargePoints > 0 ? (connectedChargePoints / totalChargePoints * 100).toFixed(1) : 0
-          },
-          recentTransactions,
-          chargePointStatuses,
-          lastUpdated: new Date()
-        });
-      } catch (error) {
-        console.error('❌ Error fetching dashboard data:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
-
-    // Get all charge points (CMS view)
-    app.get('/api/cms/charge-points', async (req, res) => {
-      try {
-        const chargePoints = await ocppCMS.getAllChargePoints();
-        const connectedPoints = ocppWebSocketServer.getConnectedChargePoints();
-        
-        // Merge connected status
-        const mergedData = chargePoints.map(cp => {
-          const connected = connectedPoints.find(c => c.chargePointId === cp.chargePointId);
-          return {
-            ...cp,
-            isConnected: !!connected,
-            lastHeartbeat: connected?.lastHeartbeat || cp.lastHeartbeat
-          };
-        });
-
-        res.json(mergedData);
-      } catch (error) {
-        console.error('❌ Error fetching charge points:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
-
-    // Remote start transaction
-    app.post('/api/cms/remote-start/:chargePointId', async (req, res) => {
-      try {
-        const { chargePointId } = req.params;
-        const { idTag, connectorId = 1 } = req.body;
-
-        if (!idTag) {
-          return res.status(400).json({ error: 'idTag is required' });
-        }
-
-        const success = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
-        
-        if (success) {
-          res.json({ message: 'Remote start command sent successfully', status: 'accepted' });
-        } else {
-          res.status(400).json({ error: 'Remote start command failed or was rejected' });
-        }
-      } catch (error) {
-        console.error('❌ Remote start error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
-
-    // Remote stop transaction
-    app.post('/api/cms/remote-stop/:chargePointId', async (req, res) => {
-      try {
-        const { chargePointId } = req.params;
-        const { transactionId } = req.body;
-
-        if (!transactionId) {
-          return res.status(400).json({ error: 'Transaction ID is required' });
-        }
-
-        const success = await ocppWebSocketServer.remoteStopTransaction(chargePointId, transactionId);
-        
-        if (success) {
-          res.json({ message: 'Remote stop command sent successfully', status: 'accepted' });
-        } else {
-          res.status(400).json({ error: 'Remote stop command failed or was rejected' });
-        }
-      } catch (error) {
-        console.error('❌ Remote stop error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
-
-    // ========== PCB INTEGRATION ENDPOINTS ==========
-    
-    // Register new PCB device
-    app.post('/api/pcb/register-device', async (req, res) => {
-      try {
-        const deviceData = req.body;
-        
-        // Validate required fields
-        if (!deviceData.chargePointId || !deviceData.hardwareId) {
-          return res.status(400).json({ 
-            error: 'chargePointId and hardwareId are required' 
-          });
-        }
-
-        // Check if device already exists
-        const existingDevice = await pcbIntegration.pcbDevices.findOne({
-          $or: [
-            { hardwareId: deviceData.hardwareId },
-            { chargePointId: deviceData.chargePointId }
-          ]
-        });
-
-        if (existingDevice) {
-          return res.status(400).json({ 
-            error: 'Device with this hardware ID or charge point ID already exists' 
-          });
-        }
-
-        const result = await pcbIntegration.registerPCBDevice(deviceData);
-        
-        res.json({
-          message: 'PCB device registered successfully',
-          device: result,
-          connectionInstructions: {
-            step1: 'Flash the provided credentials to your PCB',
-            step2: 'Connect to WebSocket endpoint using the provided URL',
-            step3: 'Send authentication headers with each OCPP message',
-            step4: 'Implement OCPP 1.6 protocol for communication'
+          success: true,
+          message: 'Charging stop process initiated',
+          data: {
+            ocppStopped,
+            espNotified
           }
         });
       } catch (error) {
-        console.error('❌ Error registering PCB device:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('❌ Error stopping charging:', error);
+        res.status(500).json({ error: "Internal server error" });
       }
     });
 
-    // Get all PCB devices
-    app.get('/api/pcb/devices', async (req, res) => {
-      try {
-        const { includeOffline } = req.query;
-        const devices = await pcbIntegration.getPCBDevices(includeOffline === 'true');
-        
-        // Remove sensitive information
-        const sanitizedDevices = devices.map(device => ({
-          deviceId: device.deviceId,
-          chargePointId: device.chargePointId,
-          deviceName: device.deviceName,
-          status: device.status,
-          isOnline: device.isOnline,
-          lastHeartbeat: device.lastHeartbeat,
-          firmwareVersion: device.firmwareVersion,
-          capabilities: device.capabilities,
-          createdAt: device.createdAt
-        }));
-
-        res.json(sanitizedDevices);
-      } catch (error) {
-        console.error('❌ Error fetching PCB devices:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
-
-    // ========== EXTERNAL API ENDPOINTS ==========
+    // ========== ADMINISTRATIVE ENDPOINTS ==========
     
-    // External API: Get charge points
-    app.get('/api/external/charge-points', authenticateExternalAPI, async (req, res) => {
-      try {
-        const chargePoints = await ocppCMS.getAllChargePoints();
-        const connectedPoints = ocppWebSocketServer.getConnectedChargePoints();
-        
-        const response = chargePoints.map(cp => {
-          const connected = connectedPoints.find(c => c.chargePointId === cp.chargePointId);
-          return {
-            chargePointId: cp.chargePointId,
-            status: cp.status,
-            isConnected: !!connected,
-            connectors: cp.connectors?.length || 1,
-            lastHeartbeat: connected?.lastHeartbeat || cp.lastHeartbeat
-          };
-        });
-
-        res.json(response);
-      } catch (error) {
-        console.error('❌ External API error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
+    // Admin health check
+    app.get('/api/admin/health', (req, res) => {
+      res.json({ 
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        services: {
+          database: db ? 'connected' : 'disconnected',
+          ocppServer: ocppWebSocketServer ? 'running' : 'stopped',
+          pcbIntegration: pcbIntegration ? 'initialized' : 'not initialized'
+        }
+      });
     });
 
-    // External API: Remote start
-    app.post('/api/external/remote-start', authenticateExternalAPI, async (req, res) => {
-      try {
-        const { chargePointId, idTag, connectorId = 1 } = req.body;
-
-        if (!chargePointId || !idTag) {
-          return res.status(400).json({ error: 'chargePointId and idTag are required' });
-        }
-
-        const success = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
-        
-        if (success) {
-          res.json({ 
-            message: 'Remote start initiated', 
-            chargePointId, 
-            status: 'accepted' 
-          });
-        } else {
-          res.status(400).json({ 
-            error: 'Remote start failed',
-            chargePointId,
-            status: 'rejected'
-          });
-        }
-      } catch (error) {
-        console.error('❌ External remote start error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+    // Admin: Get server logs
+    app.get('/api/admin/logs', (req, res) => {
+      // For security, limit log access to admin users only
+      if (!req.user || !req.user.isAdmin) {
+        return res.status(403).json({ error: "Access denied" });
       }
+      
+      // Implement log retrieval logic here
+      res.json({
+        success: true,
+        message: "Log retrieval not implemented",
+        data: [] // Replace with actual log data
+      });
     });
 
-    // External API: Get transactions
-    app.get('/api/external/transactions', authenticateExternalAPI, async (req, res) => {
-      try {
-        const { chargePointId, status, limit = 50 } = req.query;
-        
-        let query = {};
-        if (chargePointId) query.chargePointId = chargePointId;
-        if (status) query.status = status;
-
-        const transactions = await db.collection('ocppTransactions')
-          .find(query)
-          .sort({ createdAt: -1 })
-          .limit(parseInt(limit))
-          .project({
-            transactionId: 1,
-            chargePointId: 1,
-            connectorId: 1,
-            status: 1,
-            startTimestamp: 1,
-            stopTimestamp: 1,
-            energyDelivered: 1
-          })
-          .toArray();
-
-        res.json(transactions);
-      } catch (error) {
-        console.error('❌ External transactions API error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+    // Admin: Get system metrics
+    app.get('/api/admin/metrics', (req, res) => {
+      // For security, limit metrics access to admin users only
+      if (!req.user || !req.user.isAdmin) {
+        return res.status(403).json({ error: "Access denied" });
       }
+      
+      const metrics = {
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage(),
+        cpuUsage: process.cpuUsage(),
+        requestsPerSecond: req.metrics ? req.metrics.requestsPerSecond : 0
+      };
+      
+      res.json({
+        success: true,
+        data: metrics
+      });
     });
 
-    // ========== ESP DEVICE CONTROL ENDPOINTS ==========
-    
-    // Manual ESP device control
-    app.post('/api/esp-control/:chargePointId', async (req, res) => {
-      try {
-        const { chargePointId } = req.params;
-        const { command, data } = req.body;
-
-        if (!command) {
-          return res.status(400).json({ error: 'Command is required' });
-        }
-
-        const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(chargePointId);
-        if (!chargePointStatus || !chargePointStatus.isConnected) {
-          return res.status(404).json({ error: 'ESP device not connected' });
-        }
-
-        let response;
-        switch (command.toLowerCase()) {
-          case 'start':
-            response = await ocppWebSocketServer.sendCustomMessage(chargePointId, 'ChargingStart', {
-              command: 'START_CHARGING',
-              ...data,
-              timestamp: new Date().toISOString()
-            });
-            break;
-          
-          case 'stop':
-            response = await ocppWebSocketServer.sendCustomMessage(chargePointId, 'ChargingStop', {
-              command: 'STOP_CHARGING',
-              ...data,
-              timestamp: new Date().toISOString()
-            });
-            break;
-          
-          case 'status':
-            response = await ocppWebSocketServer.sendCustomMessage(chargePointId, 'StatusRequest', {
-              command: 'GET_STATUS',
-              timestamp: new Date().toISOString()
-            });
-            break;
-          
-          default:
-            return res.status(400).json({ error: 'Invalid command' });
-        }
-
-        res.json({ 
-          message: `Command ${command} sent to ESP device`, 
-          chargePointId,
-          response 
-        });
-      } catch (error) {
-        console.error('❌ ESP control error:', error);
-        res.status(500).json({ error: 'Failed to send command to ESP device' });
+    // Admin: Force server shutdown (for maintenance)
+    app.post('/api/admin/shutdown', (req, res) => {
+      // For security, limit shutdown access to admin users only
+      if (!req.user || !req.user.isAdmin) {
+        return res.status(403).json({ error: "Access denied" });
       }
+      
+      res.json({
+        success: true,
+        message: "Shutdown initiated",
+        data: null
+      });
+      
+      // Graceful shutdown after 5 seconds
+      setTimeout(() => {
+        console.log("🔒 Shutting down server for maintenance...");
+        process.exit(0);
+      }, 5000);
     });
 
-    // Get ESP device status
-    app.get('/api/esp-status/:chargePointId', async (req, res) => {
+    // Admin: Reload configuration
+    app.post('/api/admin/reload-config', async (req, res) => {
+      // For security, limit config reload access to admin users only
+      if (!req.user || !req.user.isAdmin) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
       try {
-        const { chargePointId } = req.params;
+        // Reload environment variables
+        require('dotenv').config();
         
-        const status = await ocppWebSocketServer.getChargePointStatus(chargePointId);
-        
-        if (!status) {
-          return res.status(404).json({ error: 'ESP device not found' });
-        }
+        // Reinitialize services with new config
+        await initializeDatabase();
+        ocppCMS = new OCPPCMSConfig(db);
+        ocppWebSocketServer = new OCPPWebSocketServer(db, server);
+        pcbIntegration = new OCPPPCBIntegration(db);
         
         res.json({
-          chargePointId,
-          isConnected: status.isConnected,
-          lastHeartbeat: status.lastHeartbeat,
-          status: status.status,
-          connectors: status.connectors,
-          deviceInfo: {
-            vendor: status.vendor,
-            model: status.model,
-            firmwareVersion: status.firmwareVersion
-          }
+          success: true,
+          message: "Configuration reloaded",
+          data: null
         });
       } catch (error) {
-        console.error('❌ Error getting ESP status:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
-
-    // Webhook endpoint for ESP device to report charging status
-    app.post('/api/esp-webhook/:chargePointId', async (req, res) => {
-      try {
-        const { chargePointId } = req.params;
-        const { event, data, timestamp } = req.body;
-
-        console.log(`📥 ESP webhook from ${chargePointId}:`, { event, data });
-
-        // Log the event
-        await db.collection('espEvents').insertOne({
-          chargePointId,
-          event,
-          data,
-          timestamp: timestamp ? new Date(timestamp) : new Date(),
-          receivedAt: new Date()
-        });
-
-        // Handle different events
-        switch (event) {
-          case 'charging_started':
-            console.log(`✅ ESP confirmed charging started for order: ${data.orderId}`);
-            if (data.orderId && ObjectId.isValid(data.orderId)) {
-              await orders.updateOne(
-                { _id: new ObjectId(data.orderId) },
-                {
-                  $set: {
-                    espConfirmedStart: true,
-                    espStartConfirmedAt: new Date(),
-                    updatedAt: new Date()
-                  }
-                }
-              );
-            }
-            break;
-
-          case 'charging_stopped':
-            console.log(`✅ ESP confirmed charging stopped for order: ${data.orderId}`);
-            if (data.orderId && ObjectId.isValid(data.orderId)) {
-              await orders.updateOne(
-                { _id: new ObjectId(data.orderId) },
-                {
-                  $set: {
-                    espConfirmedStop: true,
-                    espStopConfirmedAt: new Date(),
-                    actualDuration: data.duration,
-                    actualPowerDelivered: data.powerDelivered,
-                    updatedAt: new Date()
-                  }
-                }
-              );
-            }
-            break;
-
-          case 'error':
-            console.error(`❌ ESP error reported: ${data.message}`);
-            break;
-
-          case 'status_update':
-            console.log(`📊 ESP status update: ${data.status}`);
-            break;
-        }
-
-        res.json({ message: 'Webhook received', event, timestamp: new Date() });
-      } catch (error) {
-        console.error('❌ ESP webhook error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
-
-    // ========== SETUP OCPP ROUTES ==========
-    
-    // Add OCPP-specific routes
-    app.use('/api/ocpp', createOCPPRoutes(ocppWebSocketServer));
-
-    // Get OCPP transactions
-    app.get('/api/ocpp/transactions', async (req, res) => {
-      try {
-        const transactions = await db.collection('ocppTransactions')
-          .find({})
-          .sort({ createdAt: -1 })
-          .toArray();
-        
-        res.json(transactions);
-      } catch (error) {
-        console.error('❌ Error fetching OCPP transactions:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
-
-    // Get meter values
-    app.get('/api/ocpp/meter-values/:chargePointId', async (req, res) => {
-      try {
-        const { chargePointId } = req.params;
-        const meterValues = await db.collection('ocppMeterValues')
-          .find({ chargerId: chargePointId })
-          .sort({ timestamp: -1 })
-          .limit(100)
-          .toArray();
-        
-        res.json(meterValues);
-      } catch (error) {
-        console.error('❌ Error fetching meter values:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('❌ Error reloading configuration:', error);
+        res.status(500).json({ error: "Internal server error" });
       }
     });
 
     // ========== ERROR HANDLING ==========
     
+    // 404 Not Found
+    app.use((req, res) => {
+      res.status(404).json({ error: "Not found" });
+    });
+
     // Global error handler
     app.use((err, req, res, next) => {
       console.error('❌ Unhandled error:', err);
-      res.status(500).json({
-        error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
-      });
+      res.status(500).json({ error: "Internal server error" });
     });
 
-    // 404 handler
-    app.use('*', (req, res) => {
-      res.status(404).json({
-        error: 'Endpoint not found',
-        availableEndpoints: {
-          health: '/health',
-          chargers: '/api/chargers',
-          orders: '/api/orders',
-          payments: '/api/payment-*',
-          charging: '/api/charging/*',
-          cms: '/api/cms/*',
-          ocpp: '/api/ocpp/*',
-          pcb: '/api/pcb/*',
-          external: '/api/external/*',
-          esp: '/api/esp-*'
-        }
-      });
-    });
-
-    // ========== START SERVER ==========
-    
-    // Start server
+    // Start the server
     server.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🔌 OCPP WebSocket available at: ws://localhost:${PORT}/ocpp`);
-      console.log(`🌐 HTTP API available at: http://localhost:${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/health`);
-      console.log(`📝 API Documentation: http://localhost:${PORT}/`);
-    });
-    
-    // Graceful shutdown
-    process.on('SIGTERM', async () => {
-      console.log('🛑 SIGTERM received, shutting down gracefully...');
-      try {
-        if (ocppWebSocketServer) {
-          await ocppWebSocketServer.stop();
-          console.log('✅ OCPP WebSocket Server stopped');
-        }
-        server.close(() => {
-          console.log('✅ HTTP Server stopped');
-          console.log('✅ Server shut down successfully');
-          process.exit(0);
-        });
-      } catch (error) {
-        console.error('❌ Error during shutdown:', error);
-        process.exit(1);
-      }
+      console.log(`🚀 Server is running on http://localhost:${PORT}`);
     });
 
-    process.on('SIGINT', async () => {
-      console.log('🛑 SIGINT received, shutting down gracefully...');
-      try {
-        if (ocppWebSocketServer) {
-          await ocppWebSocketServer.stop();
-          console.log('✅ OCPP WebSocket Server stopped');
-        }
-        server.close(() => {
-          console.log('✅ HTTP Server stopped');
-          console.log('✅ Server shut down successfully');
-          process.exit(0);
-        });
-      } catch (error) {
-        console.error('❌ Error during shutdown:', error);
-        process.exit(1);
-      }
-    });
-
-    // Handle unhandled promise rejections
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-      // Don't exit the process, just log the error
-    });
-
-    // Handle uncaught exceptions
-    process.on('uncaughtException', (error) => {
-      console.error('❌ Uncaught Exception:', error);
-      console.log('🛑 Server will shut down...');
-      process.exit(1);
-    });
-    
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
+    console.error('❌ Server initialization failed:', error);
   }
 }
 
 // Start the server
-startServer().catch(error => {
-  console.error('❌ Failed to start server:', error);
-  process.exit(1);
-});
+startServer();
