@@ -1,74 +1,4483 @@
-require('dotenv').config();
 
-// ===== INTEGRATED EV CHARGING BACKEND =====
-// backend/index.js - Main server entry point
+// // const express = require('express');
+// // const { ObjectId } = require('mongodb');
+// // const connectDB = require('./config/mongo');
+// // const cors = require('cors');
+// // const https = require('https');
+
+// // const app = express();
+// // app.use(cors());
+// // app.use(express.json());
+
+// // // Custom fetch function using Node.js built-in https module (no external dependencies)
+// // function customFetch(url, options = {}) {
+// //   return new Promise((resolve, reject) => {
+// //     const urlObj = new URL(url);
+// //     const requestOptions = {
+// //       hostname: urlObj.hostname,
+// //       port: urlObj.port || 443,
+// //       path: urlObj.pathname + urlObj.search,
+// //       method: options.method || 'GET',
+// //       headers: options.headers || {}
+// //     };
+
+// //     const req = https.request(requestOptions, (res) => {
+// //       let data = '';
+// //       res.on('data', (chunk) => data += chunk);
+// //       res.on('end', () => {
+// //         resolve({
+// //           ok: res.statusCode >= 200 && res.statusCode < 300,
+// //           status: res.statusCode,
+// //           json: () => Promise.resolve(JSON.parse(data)),
+// //           text: () => Promise.resolve(data)
+// //         });
+// //       });
+// //     });
+
+// //     req.on('error', reject);
+    
+// //     if (options.body) {
+// //       req.write(options.body);
+// //     }
+    
+// //     req.end();
+// //   });
+// // }
+
+// // connectDB().then((db) => {
+// //   const chargers = db.collection('chargers');
+// //   const orders = db.collection('orders');
+// //   const chargingStatus = db.collection('chargingStatus');
+// //   const tempReservations = db.collection('tempReservations');
+
+// //   console.log("✅ Connected to MongoDB collections");
+
+// //   // Clean up expired temporary reservations on startup
+// //   cleanupExpiredTempReservations();
+  
+// //   // Run cleanup every 5 minutes
+// //   setInterval(cleanupExpiredTempReservations, 5 * 60 * 1000);
+
+// //   async function cleanupExpiredTempReservations() {
+// //     try {
+// //       const result = await tempReservations.deleteMany({
+// //         expiresAt: { $lt: new Date() }
+// //       });
+// //       if (result.deletedCount > 0) {
+// //         console.log(`🧹 Cleaned up ${result.deletedCount} expired temporary reservations`);
+// //       }
+// //     } catch (error) {
+// //       console.error('❌ Error cleaning up expired reservations:', error);
+// //     }
+// //   }
+
+// //   app.get('/', (req, res) => res.send('🚀 EV Charging Backend Running!'));
+
+// //   app.get('/api/chargers', async (req, res) => {
+// //     try {
+// //       console.log("📤 GET /api/chargers - Fetching available chargers");
+      
+// //       // Get all chargers that are not permanently reserved
+// //       const allChargers = await chargers.find({
+// //         $or: [
+// //           { reserved: { $exists: false } },
+// //           { reserved: false }
+// //         ]
+// //       }).toArray();
+
+// //       // Get active temporary reservations
+// //       const activeReservations = await tempReservations.find({
+// //         expiresAt: { $gt: new Date() }
+// //       }).toArray();
+
+// //       const tempReservedChargerIds = new Set(
+// //         activeReservations.map(res => res.chargerId)
+// //       );
+
+// //       // Filter out temporarily reserved chargers
+// //       const availableChargers = allChargers.filter(charger => 
+// //         !tempReservedChargerIds.has(charger.chargerId)
+// //       );
+
+// //       console.log(`✅ Found ${availableChargers.length} available chargers (${allChargers.length} total, ${tempReservedChargerIds.size} temp reserved)`);
+// //       res.json(availableChargers);
+// //     } catch (err) {
+// //       console.error('❌ Error fetching chargers:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// //   // NEW: Temporary reservation endpoint
+// //   app.post('/api/temp-reserve-charger', async (req, res) => {
+// //     try {
+// //       const { chargerId, expiryMinutes = 10 } = req.body;
+
+// //       if (!chargerId) {
+// //         return res.status(400).json({ error: "Charger ID is required" });
+// //       }
+
+// //       // Check if charger exists and is available
+// //       const charger = await chargers.findOne({ chargerId });
+// //       if (!charger) {
+// //         return res.status(404).json({ error: "Charger not found" });
+// //       }
+
+// //       if (charger.reserved) {
+// //         return res.status(400).json({ error: "Charger is permanently reserved" });
+// //       }
+
+// //       // Check if already temporarily reserved
+// //       const existingReservation = await tempReservations.findOne({
+// //         chargerId,
+// //         expiresAt: { $gt: new Date() }
+// //       });
+
+// //       if (existingReservation) {
+// //         return res.status(400).json({ error: "Charger is temporarily reserved by another user" });
+// //       }
+
+// //       // Create temporary reservation
+// //       const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
+// //       await tempReservations.insertOne({
+// //         chargerId,
+// //         createdAt: new Date(),
+// //         expiresAt,
+// //         expiryMinutes
+// //       });
+
+// //       console.log(`✅ Charger ${chargerId} temporarily reserved for ${expiryMinutes} minutes`);
+// //       res.json({ 
+// //         message: "Charger temporarily reserved", 
+// //         chargerId, 
+// //         expiresAt 
+// //       });
+
+// //     } catch (error) {
+// //       console.error('❌ Error creating temporary reservation:', error);
+// //       res.status(500).json({ error: "Internal server error" });
+// //     }
+// //   });
+
+// //   // NEW: Release temporary reservation endpoint
+// //   app.post('/api/release-temp-reservation', async (req, res) => {
+// //     try {
+// //       const { chargerId } = req.body;
+
+// //       if (!chargerId) {
+// //         return res.status(400).json({ error: "Charger ID is required" });
+// //       }
+
+// //       const result = await tempReservations.deleteMany({ chargerId });
+      
+// //       console.log(`✅ Released temporary reservation for charger ${chargerId} (${result.deletedCount} records removed)`);
+// //       res.json({ 
+// //         message: "Temporary reservation released", 
+// //         chargerId,
+// //         removedCount: result.deletedCount
+// //       });
+
+// //     } catch (error) {
+// //       console.error('❌ Error releasing temporary reservation:', error);
+// //       res.status(500).json({ error: "Internal server error" });
+// //     }
+// //   });
+
+// //   // NEW: Permanent reservation endpoint (only after payment success)
+// //   app.post('/api/reserve-charger', async (req, res) => {
+// //     try {
+// //       const { chargerId, orderId, customerEmail, customerName } = req.body;
+
+// //       if (!chargerId || !orderId) {
+// //         return res.status(400).json({ error: "Charger ID and Order ID are required" });
+// //       }
+
+// //       // Check if charger is available
+// //       const charger = await chargers.findOne({ chargerId });
+// //       if (!charger) {
+// //         return res.status(404).json({ error: "Charger not found" });
+// //       }
+
+// //       if (charger.reserved) {
+// //         return res.status(400).json({ error: "Charger is already permanently reserved" });
+// //       }
+
+// //       // Permanently reserve the charger
+// //       await chargers.updateOne(
+// //         { chargerId },
+// //         { 
+// //           $set: { 
+// //             reserved: true, 
+// //             reservedAt: new Date(),
+// //             reservedBy: orderId,
+// //             customerEmail,
+// //             customerName
+// //           } 
+// //         }
+// //       );
+
+// //       // Remove any temporary reservations for this charger
+// //       await tempReservations.deleteMany({ chargerId });
+
+// //       console.log(`✅ Charger ${chargerId} permanently reserved for order ${orderId}`);
+// //       res.json({ 
+// //         message: "Charger permanently reserved", 
+// //         chargerId, 
+// //         orderId 
+// //       });
+
+// //     } catch (error) {
+// //       console.error('❌ Error creating permanent reservation:', error);
+// //       res.status(500).json({ error: "Internal server error" });
+// //     }
+// //   });
+
+// //   // NEW: Release charger by order ID
+// //   app.post('/api/release-charger-by-order', async (req, res) => {
+// //     try {
+// //       const { orderId } = req.body;
+
+// //       if (!orderId) {
+// //         return res.status(400).json({ error: "Order ID is required" });
+// //       }
+
+// //       // Release permanent reservation
+// //       const chargerResult = await chargers.updateMany(
+// //         { reservedBy: orderId },
+// //         { 
+// //           $set: { reserved: false },
+// //           $unset: { reservedAt: "", reservedBy: "", customerEmail: "", customerName: "" }
+// //         }
+// //       );
+
+// //       // Also release any temporary reservations (cleanup)
+// //       const tempResult = await tempReservations.deleteMany({});
+
+// //       console.log(`✅ Released reservations for order ${orderId} (${chargerResult.modifiedCount} permanent, ${tempResult.deletedCount} temporary)`);
+// //       res.json({ 
+// //         message: "Reservations released", 
+// //         orderId,
+// //         permanentReleased: chargerResult.modifiedCount,
+// //         temporaryReleased: tempResult.deletedCount
+// //       });
+
+// //     } catch (error) {
+// //       console.error('❌ Error releasing charger by order:', error);
+// //       res.status(500).json({ error: "Internal server error" });
+// //     }
+// //   });
+
+// //   // NEW: Initiate refund endpoint
+// //   app.post('/api/initiate-refund', async (req, res) => {
+// //     try {
+// //       const { orderId } = req.body;
+
+// //       if (!orderId || !ObjectId.isValid(orderId)) {
+// //         return res.status(400).json({ error: "Valid Order ID is required" });
+// //       }
+
+// //       // Get order details
+// //       const order = await orders.findOne({ _id: new ObjectId(orderId) });
+// //       if (!order) {
+// //         return res.status(404).json({ error: "Order not found" });
+// //       }
+
+// //       // Mark order for refund
+// //       await orders.updateOne(
+// //         { _id: new ObjectId(orderId) },
+// //         { 
+// //           $set: { 
+// //             refundRequested: true,
+// //             refundRequestedAt: new Date(),
+// //             status: 'refund_requested',
+// //             updatedAt: new Date()
+// //           } 
+// //         }
+// //       );
+
+// //       // Here you would integrate with Mollie's refund API
+// //       // For now, we'll just log it
+// //       console.log(`✅ Refund initiated for order ${orderId}, payment ID: ${order.molliePaymentId || order.paymentId}`);
+      
+// //       // TODO: Integrate with Mollie refund API
+// //       // const refundResponse = await customFetch(`https://api.mollie.com/v2/payments/${order.molliePaymentId}/refunds`, {
+// //       //   method: 'POST',
+// //       //   headers: {
+// //       //     'Authorization': `Bearer ${MOLLIE_API_KEY}`,
+// //       //     'Content-Type': 'application/json'
+// //       //   },
+// //       //   body: JSON.stringify({
+// //       //     amount: {
+// //       //       currency: 'EUR',
+// //       //       value: order.paymentAmount
+// //       //     }
+// //       //   })
+// //       // });
+
+// //       res.json({ 
+// //         message: "Refund initiated", 
+// //         orderId,
+// //         paymentId: order.molliePaymentId || order.paymentId
+// //       });
+
+// //     } catch (error) {
+// //       console.error('❌ Error initiating refund:', error);
+// //       res.status(500).json({ error: "Internal server error" });
+// //     }
+// //   });
+
+// //   // UPDATED: Modified save-order to NOT permanently reserve charger
+// //   app.post('/api/save-order', async (req, res) => {
+// //     try {
+// //       const { charger, firstName, lastName, email, phone, timestamp } = req.body;
+
+// //       if (!charger?.chargerId || !firstName || !lastName || !email || !phone) {
+// //         return res.status(400).json({ error: "Missing required information" });
+// //       }
+
+// //       const chargerDoc = await chargers.findOne({ chargerId: charger.chargerId });
+// //       if (!chargerDoc) {
+// //         return res.status(400).json({ error: "Charger not found" });
+// //       }
+
+// //       if (chargerDoc.reserved) {
+// //         return res.status(400).json({ error: "Charger is permanently reserved" });
+// //       }
+
+// //       // Check if temporarily reserved by someone else
+// //       const tempReservation = await tempReservations.findOne({
+// //         chargerId: charger.chargerId,
+// //         expiresAt: { $gt: new Date() }
+// //       });
+
+// //       if (tempReservation) {
+// //         return res.status(400).json({ error: "Charger is temporarily reserved by another user" });
+// //       }
+
+// //       // DON'T reserve the charger permanently here - only after payment success
+// //       const orderData = {
+// //         charger,
+// //         firstName: firstName.trim(),
+// //         lastName: lastName.trim(),
+// //         email: email.trim(),
+// //         phone: phone.trim(),
+// //         timestamp: timestamp || new Date().toISOString(),
+// //         paid: false,
+// //         paymentStatus: 'pending',
+// //         chargingStarted: false,
+// //         chargingCompleted: false,
+// //         createdAt: new Date(),
+// //         status: 'pending'
+// //       };
+
+// //       const result = await orders.insertOne(orderData);
+// //       console.log(`✅ Order saved with ID: ${result.insertedId}, Status: pending (charger NOT reserved yet)`);
+// //       res.status(200).json({ message: "Order saved", id: result.insertedId });
+// //     } catch (err) {
+// //       console.error('❌ Error saving order:', err);
+// //       res.status(500).json({ error: "Internal server error" });
+// //     }
+// //   });
+
+// //   app.get('/api/get-order/:id', async (req, res) => {
+// //     try {
+// //       const id = req.params.id;
+// //       if (!ObjectId.isValid(id)) {
+// //         console.error(`❌ Invalid order ID format: ${id}`);
+// //         return res.status(400).json({ error: "Invalid ID" });
+// //       }
+
+// //       const order = await orders.findOne({ _id: new ObjectId(id) });
+// //       if (!order) {
+// //         console.error(`❌ Order not found: ${id}`);
+// //         return res.status(404).json({ error: "Order not found" });
+// //       }
+
+// //       // Enhanced logging for debugging payment status issues
+// //       console.log(`✅ Order retrieved: ${id}`, {
+// //         status: order.status,
+// //         paid: order.paid,
+// //         paymentStatus: order.paymentStatus,
+// //         molliePaymentId: order.molliePaymentId,
+// //         paidAt: order.paidAt
+// //       });
+
+// //       res.json(order);
+// //     } catch (err) {
+// //       console.error('❌ Error fetching order:', err);
+// //       res.status(500).json({ error: "Internal server error" });
+// //     }
+// //   });
+
+// //   // Payment creation notification from frontend
+// //   app.post('/api/payment-created', async (req, res) => {
+// //     try {
+// //       const { orderId, molliePaymentId, paymentStatus, amount, customerInfo, timestamp } = req.body;
+      
+// //       if (!orderId || !ObjectId.isValid(orderId)) {
+// //         return res.status(400).json({ error: "Invalid order ID" });
+// //       }
+
+// //       const updateData = {
+// //         molliePaymentId,
+// //         paymentStatus: paymentStatus || 'open',
+// //         paymentAmount: amount,
+// //         paymentCreatedAt: new Date(timestamp),
+// //         updatedAt: new Date()
+// //       };
+
+// //       await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+// //       console.log(`✅ Payment creation recorded for order: ${orderId}, Mollie ID: ${molliePaymentId}`);
+      
+// //       res.json({ message: "Payment creation recorded" });
+// //     } catch (err) {
+// //       console.error('❌ Error recording payment creation:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// //   // Generic payment webhook (for manual updates)
+// //   app.post('/api/payment-webhook', async (req, res) => {
+// //     try {
+// //       const { orderId, paymentStatus, paymentId, paymentMethod } = req.body;
+// //       if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid order ID" });
+
+// //       const updateData = {
+// //         paid: paymentStatus === 'paid',
+// //         paymentStatus,
+// //         paymentId,
+// //         paymentMethod,
+// //         paidAt: paymentStatus === 'paid' ? new Date() : null,
+// //         status: paymentStatus === 'paid' ? 'paid' : (paymentStatus === 'failed' || paymentStatus === 'cancelled' ? paymentStatus : 'pending'),
+// //         updatedAt: new Date()
+// //       };
+
+// //       await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+// //       console.log(`✅ Payment webhook updated order: ${orderId}, Status: ${paymentStatus}`);
+// //       res.json({ message: "Webhook updated" });
+// //     } catch (err) {
+// //       console.error('❌ Error processing payment webhook:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// //   // UPDATED: Mollie webhook - now handles charger reservation on payment success
+// //   app.post('/api/mollie-webhook', async (req, res) => {
+// //     try {
+// //       const { id: paymentId } = req.body;
+      
+// //       if (!paymentId) {
+// //         console.error("❌ Mollie webhook: Missing payment ID");
+// //         return res.status(400).json({ error: "Missing payment ID" });
+// //       }
+
+// //       console.log(`📥 Mollie webhook received for payment: ${paymentId}`);
+
+// //       const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+
+// //       // Fetch payment details from Mollie using custom fetch
+// //       const response = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+// //         headers: {
+// //           "Authorization": `Bearer ${MOLLIE_API_KEY}`,
+// //           "Content-Type": "application/json"
+// //         }
+// //       });
+
+// //       if (!response.ok) {
+// //         console.error(`❌ Failed to fetch payment from Mollie: ${response.status}`);
+// //         return res.status(400).json({ error: "Failed to fetch payment data" });
+// //       }
+
+// //       const paymentData = await response.json();
+// //       console.log(`📋 Mollie payment data:`, {
+// //         id: paymentData.id,
+// //         status: paymentData.status,
+// //         method: paymentData.method,
+// //         amount: paymentData.amount,
+// //         metadata: paymentData.metadata
+// //       });
+
+// //       // Update order with payment information
+// //       if (paymentData?.metadata?.orderId) {
+// //         const orderId = paymentData.metadata.orderId;
+
+// //         const updateData = {
+// //           paid: paymentData.status === 'paid',
+// //           paymentStatus: paymentData.status,
+// //           paymentId,
+// //           paymentMethod: paymentData.method,
+// //           paidAt: paymentData.status === 'paid' && paymentData.paidAt ? new Date(paymentData.paidAt) : null,
+// //           status: paymentData.status === 'paid' ? 'paid' : 
+// //                  (paymentData.status === 'failed' || paymentData.status === 'cancelled' || paymentData.status === 'expired') ? paymentData.status : 'pending',
+// //           mollieWebhookAt: new Date(),
+// //           updatedAt: new Date()
+// //         };
+
+// //         const result = await orders.updateOne(
+// //           { _id: new ObjectId(orderId) },
+// //           { $set: updateData }
+// //         );
+
+// //         if (result.matchedCount > 0) {
+// //           console.log(`✅ Order ${orderId} updated with payment status: ${paymentData.status}`, {
+// //             paid: updateData.paid,
+// //             paymentStatus: updateData.paymentStatus,
+// //             status: updateData.status
+// //           });
+
+// //           // NEW: If payment successful, permanently reserve the charger
+// //           if (paymentData.status === 'paid') {
+// //             try {
+// //               const order = await orders.findOne({ _id: new ObjectId(orderId) });
+// //               if (order && order.charger && order.charger.chargerId) {
+// //                 await chargers.updateOne(
+// //                   { chargerId: order.charger.chargerId },
+// //                   { 
+// //                     $set: { 
+// //                       reserved: true, 
+// //                       reservedAt: new Date(),
+// //                       reservedBy: orderId,
+// //                       customerEmail: order.email,
+// //                       customerName: `${order.firstName} ${order.lastName}`
+// //                     } 
+// //                   }
+// //                 );
+
+// //                 // Remove temporary reservation
+// //                 await tempReservations.deleteMany({ chargerId: order.charger.chargerId });
+
+// //                 console.log(`✅ Charger ${order.charger.chargerId} permanently reserved after payment success`);
+// //               }
+// //             } catch (reservationError) {
+// //               console.error("❌ Failed to reserve charger after payment success:", reservationError);
+// //             }
+// //           }
+
+// //           // NEW: If payment failed, release temporary reservations
+// //           if (paymentData.status === 'failed' || paymentData.status === 'cancelled' || paymentData.status === 'expired') {
+// //             try {
+// //               const order = await orders.findOne({ _id: new ObjectId(orderId) });
+// //               if (order && order.charger && order.charger.chargerId) {
+// //                 await tempReservations.deleteMany({ chargerId: order.charger.chargerId });
+// //                 console.log(`✅ Temporary reservation released for charger ${order.charger.chargerId} due to payment failure`);
+// //               }
+// //             } catch (releaseError) {
+// //               console.error("❌ Failed to release temporary reservation:", releaseError);
+// //             }
+// //           }
+
+// //         } else {
+// //           console.error(`❌ Order ${orderId} not found for payment update`);
+// //         }
+// //       } else {
+// //         console.error("❌ No order ID found in payment metadata");
+// //       }
+
+// //       res.status(200).send("OK");
+// //     } catch (err) {
+// //       console.error("❌ Mollie webhook processing failed:", err);
+// //       res.status(500).json({ error: "Webhook processing failed" });
+// //     }
+// //   });
+
+// //   // Direct Mollie payment verification endpoint
+// //   app.get('/api/verify-mollie-payment/:paymentId', async (req, res) => {
+// //     try {
+// //       const { paymentId } = req.params;
+      
+// //       console.log("🔍 Direct Mollie verification requested for payment:", paymentId);
+      
+// //       if (!paymentId) {
+// //         return res.status(400).json({ 
+// //           success: false, 
+// //           error: 'Payment ID is required' 
+// //         });
+// //       }
+      
+// //       const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+      
+// //       // Verify payment directly with Mollie API
+// //       const mollieResponse = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+// //         method: 'GET',
+// //         headers: {
+// //           'Authorization': `Bearer ${MOLLIE_API_KEY}`,
+// //           'Content-Type': 'application/json'
+// //         }
+// //       });
+      
+// //       if (!mollieResponse.ok) {
+// //         console.error("❌ Mollie API error:", mollieResponse.status);
+// //         const errorText = await mollieResponse.text();
+// //         return res.status(mollieResponse.status).json({ 
+// //           success: false, 
+// //           error: `Mollie API error: ${errorText}` 
+// //         });
+// //       }
+      
+// //       const paymentData = await mollieResponse.json();
+// //       console.log("📋 Mollie payment data:", {
+// //         id: paymentData.id,
+// //         status: paymentData.status,
+// //         amount: paymentData.amount
+// //       });
+      
+// //       const isPaid = paymentData.status === 'paid';
+      
+// //       // If payment is confirmed as paid, update our database AND reserve charger
+// //       if (isPaid && paymentData.metadata && paymentData.metadata.orderId) {
+// //         try {
+// //           console.log("✅ Payment confirmed paid, updating database and reserving charger...");
+          
+// //           const updateData = {
+// //             paid: true,
+// //             paymentStatus: 'paid',
+// //             status: 'paid',
+// //             paidAt: paymentData.paidAt ? new Date(paymentData.paidAt) : new Date(),
+// //             mollieDirectVerifiedAt: new Date(),
+// //             updatedAt: new Date()
+// //           };
+          
+// //           const updateResult = await orders.updateOne(
+// //             { _id: new ObjectId(paymentData.metadata.orderId) },
+// //             { $set: updateData }
+// //           );
+
+// //           // Reserve charger permanently
+// //           if (updateResult.matchedCount > 0) {
+// //             const order = await orders.findOne({ _id: new ObjectId(paymentData.metadata.orderId) });
+// //             if (order && order.charger && order.charger.chargerId) {
+// //               await chargers.updateOne(
+// //                 { chargerId: order.charger.chargerId },
+// //                 { 
+// //                   $set: { 
+// //                     reserved: true, 
+// //                     reservedAt: new Date(),
+// //                     reservedBy: paymentData.metadata.orderId,
+// //                     customerEmail: order.email,
+// //                     customerName: `${order.firstName} ${order.lastName}`
+// //                   } 
+// //                 }
+// //               );
+
+// //               // Remove temporary reservation
+// //               await tempReservations.deleteMany({ chargerId: order.charger.chargerId });
+
+// //               console.log(`✅ Charger ${order.charger.chargerId} permanently reserved after direct verification`);
+// //             }
+// //           }
+          
+// //           console.log("📋 Database update result:", {
+// //             matchedCount: updateResult.matchedCount,
+// //             modifiedCount: updateResult.modifiedCount
+// //           });
+          
+// //         } catch (dbError) {
+// //           console.error("❌ Failed to update database:", dbError);
+// //           // Don't fail the verification if DB update fails
+// //         }
+// //       }
+      
+// //       res.json({
+// //         success: true,
+// //         payment: {
+// //           id: paymentData.id,
+// //           status: paymentData.status,
+// //           amount: paymentData.amount,
+// //           description: paymentData.description,
+// //           createdAt: paymentData.createdAt,
+// //           paidAt: paymentData.paidAt
+// //         },
+// //         isPaid: isPaid,
+// //         status: paymentData.status
+// //       });
+      
+// //     } catch (error) {
+// //       console.error("❌ Direct Mollie verification error:", error);
+// //       res.status(500).json({ 
+// //         success: false, 
+// //         error: 'Internal server error during payment verification' 
+// //       });
+// //     }
+// //   });
+
+// //   // Manual payment status update endpoint (for testing/debugging)
+// //   app.post('/api/update-payment-status/:orderId', async (req, res) => {
+// //     try {
+// //       const orderId = req.params.orderId;
+// //       const { paymentStatus, paid } = req.body;
+      
+// //       if (!ObjectId.isValid(orderId)) {
+// //         return res.status(400).json({ error: "Invalid order ID" });
+// //       }
+      
+// //       const updateData = {
+// //         paid: paid === true || paymentStatus === 'paid',
+// //         paymentStatus: paymentStatus || 'paid',
+// //         status: paymentStatus === 'paid' ? 'paid' : paymentStatus,
+// //         paidAt: (paid === true || paymentStatus === 'paid') ? new Date() : null,
+// //         manuallyUpdatedAt: new Date(),
+// //         updatedAt: new Date()
+// //       };
+      
+// //       const result = await orders.updateOne(
+// //         { _id: new ObjectId(orderId) },
+// //         { $set: updateData }
+// //       );
+      
+// //       if (result.matchedCount === 0) {
+// //         return res.status(404).json({ error: "Order not found" });
+// //       }
+
+// //       // If manually marking as paid, reserve the charger
+// //       if (paid === true || paymentStatus === 'paid') {
+// //         try {
+// //           const order = await orders.findOne({ _id: new ObjectId(orderId) });
+// //           if (order && order.charger && order.charger.chargerId) {
+// //             await chargers.updateOne(
+// //               { chargerId: order.charger.chargerId },
+// //               { 
+// //                 $set: { 
+// //                   reserved: true, 
+// //                   reservedAt: new Date(),
+// //                   reservedBy: orderId,
+// //                   customerEmail: order.email,
+// //                   customerName: `${order.firstName} ${order.lastName}`
+// //                 } 
+// //               }
+// //             );
+
+// //             // Remove temporary reservation
+// //             await tempReservations.deleteMany({ chargerId: order.charger.chargerId });
+
+// //             console.log(`✅ Charger ${order.charger.chargerId} reserved after manual payment update`);
+// //           }
+// //         } catch (reservationError) {
+// //           console.error("❌ Failed to reserve charger after manual update:", reservationError);
+// //         }
+// //       }
+      
+// //       console.log(`✅ Manual payment status update for order: ${orderId}`, updateData);
+// //       res.json({ message: "Payment status updated", updateData });
+      
+// //     } catch (error) {
+// //       console.error("❌ Error updating payment status:", error);
+// //       res.status(500).json({ error: "Internal server error" });
+// //     }
+// //   });
+
+// //   // Start charging - only allow if payment is confirmed
+// //   app.post('/api/start-charging/:id', async (req, res) => {
+// //     try {
+// //       const id = req.params.id;
+// //       if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid order ID" });
+
+// //       // Check if order exists and payment is confirmed
+// //       const order = await orders.findOne({ _id: new ObjectId(id) });
+// //       if (!order) {
+// //         console.error(`❌ Order not found for charging start: ${id}`);
+// //         return res.status(404).json({ error: "Order not found" });
+// //       }
+
+// //       // ENHANCED PAYMENT CHECK: More flexible status checking
+// //       const isPaymentConfirmed = order.paid === true || 
+// //                                 order.paymentStatus === 'paid' || 
+// //                                 order.status === 'paid';
+
+// //       console.log(`🔍 Charging start request for order: ${id}`, {
+// //         paid: order.paid,
+// //         paymentStatus: order.paymentStatus,
+// //         status: order.status,
+// //         isPaymentConfirmed: isPaymentConfirmed
+// //       });
+
+// //       if (!isPaymentConfirmed) {
+// //         console.error(`❌ Charging start denied - Payment not confirmed. Order: ${id}`, {
+// //           status: order.status,
+// //           paid: order.paid,
+// //           paymentStatus: order.paymentStatus
+// //         });
+// //         return res.status(400).json({ 
+// //           error: "Payment not confirmed", 
+// //           currentStatus: order.paymentStatus || order.status,
+// //           paid: order.paid,
+// //           debug: {
+// //             paid: order.paid,
+// //             paymentStatus: order.paymentStatus,
+// //             status: order.status
+// //           }
+// //         });
+// //       }
+
+// //       // Update order to mark charging as started
+// //       await orders.updateOne(
+// //         { _id: new ObjectId(id) },
+// //         {
+// //           $set: {
+// //             chargingStarted: true,
+// //             chargingStartedAt: new Date(),
+// //             status: 'charging',
+// //             updatedAt: new Date()
+// //           }
+// //         }
+// //       );
+
+// //       console.log(`✅ Charging started for order: ${id}`);
+// //       res.json({ message: "Charging started", orderId: id });
+// //     } catch (err) {
+// //       console.error('❌ Error starting charging:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// //   app.post('/api/charging-status', async (req, res) => {
+// //     try {
+// //       const { orderId, startTime, endTime, durationSeconds, amountPaid, powerKW } = req.body;
+// //       if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid data" });
+
+// //       const order = await orders.findOne({ _id: new ObjectId(orderId) });
+// //       if (!order) return res.status(404).json({ error: "Order not found" });
+
+// //       const chargingData = {
+// //         orderId: new ObjectId(orderId),
+// //         startTime: new Date(startTime),
+// //         endTime: endTime ? new Date(endTime) : new Date(),
+// //         durationSeconds,
+// //         amountPaid: parseFloat(amountPaid) || 0,
+// //         powerKW: parseFloat(powerKW) || 0,
+// //         userPhone: order.phone,
+// //         userEmail: order.email,
+// //         userName: `${order.firstName} ${order.lastName}`,
+// //         charger: order.charger,
+// //         createdAt: new Date()
+// //       };
+
+// //       const result = await chargingStatus.insertOne(chargingData);
+
+// //       await orders.updateOne(
+// //         { _id: new ObjectId(orderId) },
+// //         {
+// //           $set: {
+// //             chargingCompleted: true,
+// //             chargingCompletedAt: new Date(),
+// //             status: 'completed',
+// //             finalAmount: parseFloat(amountPaid) || 0,
+// //             updatedAt: new Date()
+// //           }
+// //         }
+// //       );
+
+// //       // Release charger
+// //       if (order.charger?.chargerId) {
+// //         await chargers.updateOne(
+// //           { chargerId: order.charger.chargerId },
+// //           {
+// //             $set: { reserved: false, lastUsed: new Date() },
+// //             $unset: { reservedAt: "", reservedBy: "", customerEmail: "", customerName: "" }
+// //           }
+// //         );
+// //         console.log(`✅ Charger ${order.charger.chargerId} released`);
+// //       }
+
+// //       console.log(`✅ Charging session completed for order: ${orderId}`);
+// //       res.status(200).json({ message: "Charging session saved", id: result.insertedId });
+// //     } catch (err) {
+// //       console.error('❌ Error saving charging session:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// //   // Admin endpoints
+// //   app.get('/api/orders', async (req, res) => {
+// //     try {
+// //       const allOrders = await orders.find({}).sort({ createdAt: -1 }).toArray();
+// //       res.json(allOrders);
+// //     } catch (err) {
+// //       console.error('❌ Error fetching orders:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// //   app.get('/api/charging-sessions', async (req, res) => {
+// //     try {
+// //       const sessions = await chargingStatus.find({}).sort({ createdAt: -1 }).toArray();
+// //       res.json(sessions);
+// //     } catch (err) {
+// //       console.error('❌ Error fetching charging sessions:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// //   app.get('/api/charging-sessions/:orderId', async (req, res) => {
+// //     try {
+// //       const orderId = req.params.orderId;
+// //       if (!ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid ID" });
+
+// //       const sessions = await chargingStatus.find({ orderId: new ObjectId(orderId) }).toArray();
+// //       res.json(sessions);
+// //     } catch (err) {
+// //       console.error('❌ Error fetching charging sessions for order:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// //   // NEW: Admin endpoint to view temporary reservations
+// //   app.get('/api/temp-reservations', async (req, res) => {
+// //     try {
+// //       const reservations = await tempReservations.find({}).sort({ createdAt: -1 }).toArray();
+// //       res.json(reservations);
+// //     } catch (err) {
+// //       console.error('❌ Error fetching temp reservations:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// //   // NEW: Admin endpoint to manually clean expired reservations
+// //   app.post('/api/cleanup-expired-reservations', async (req, res) => {
+// //     try {
+// //       await cleanupExpiredTempReservations();
+// //       res.json({ message: "Cleanup completed" });
+// //     } catch (err) {
+// //       console.error('❌ Error during manual cleanup:', err);
+// //       res.status(500).json({ error: "Internal error" });
+// //     }
+// //   });
+
+// // }).catch(err => {
+// //   console.error("❌ MongoDB connection failed:", err);
+// //   process.exit(1);
+// // });
+
+// // app.post('/api/create-owner-session', async (req, res) => {
+// //   try {
+// //     const { charger, isOwner, timestamp } = req.body;
+    
+// //     const ownerSession = {
+// //       charger,
+// //       isOwner: true,
+// //       timestamp: timestamp || new Date().toISOString(),
+// //       sessionType: 'owner',
+// //       paid: true,
+// //       paymentStatus: 'owner_session',
+// //       createdAt: new Date(),
+// //       status: 'active'
+// //     };
+    
+// //     const result = await db.collection('ownerSessions').insertOne(ownerSession);
+// //     console.log(`✅ Owner session created: ${result.insertedId}`);
+    
+// //     res.json({ 
+// //       message: "Owner session created", 
+// //       sessionId: result.insertedId,
+// //       session: ownerSession 
+// //     });
+// //   } catch (error) {
+// //     console.error('❌ Error creating owner session:', error);
+// //     res.status(500).json({ error: "Failed to create owner session" });
+// //   }
+// // });
+
+// // app.get('/api/get-owner-session/:id', async (req, res) => {
+// //   try {
+// //     const id = req.params.id;
+// //     if (!ObjectId.isValid(id)) {
+// //       return res.status(400).json({ error: "Invalid session ID" });
+// //     }
+    
+// //     const ownerSession = await db.collection('ownerSessions').findOne({ _id: new ObjectId(id) });
+// //     if (!ownerSession) {
+// //       return res.status(404).json({ error: "Owner session not found" });
+// //     }
+    
+// //     res.json(ownerSession);
+// //   } catch (error) {
+// //     console.error('❌ Error fetching owner session:', error);
+// //     res.status(500).json({ error: "Internal server error" });
+// //   }
+// // });
+
+// // app.post('/api/start-owner-charging/:id', async (req, res) => {
+// //   try {
+// //     const id = req.params.id;
+// //     if (!ObjectId.isValid(id)) {
+// //       return res.status(400).json({ error: "Invalid session ID" });
+// //     }
+    
+// //     const updateResult = await db.collection('ownerSessions').updateOne(
+// //       { _id: new ObjectId(id) },
+// //       {
+// //         $set: {
+// //           chargingStarted: true,
+// //           chargingStartedAt: new Date(),
+// //           status: 'charging',
+// //           updatedAt: new Date()
+// //         }
+// //       }
+// //     );
+    
+// //     if (updateResult.matchedCount === 0) {
+// //       return res.status(404).json({ error: "Owner session not found" });
+// //     }
+    
+// //     console.log(`✅ Owner charging started for session: ${id}`);
+// //     res.json({ message: "Owner charging started", sessionId: id });
+// //   } catch (error) {
+// //     console.error('❌ Error starting owner charging:', error);
+// //     res.status(500).json({ error: "Internal error" });
+// //   }
+// // });
+
+// // app.post('/api/owner-charging-status', async (req, res) => {
+// //   try {
+// //     const { sessionId, startTime, endTime, durationSeconds, amountPaid, powerKW, userInfo } = req.body;
+    
+// //     const chargingData = {
+// //       sessionId: sessionId ? new ObjectId(sessionId) : null,
+// //       sessionType: 'owner',
+// //       startTime: new Date(startTime),
+// //       endTime: endTime ? new Date(endTime) : new Date(),
+// //       durationSeconds,
+// //       amountPaid: 0, // Owner sessions are free
+// //       powerKW: parseFloat(powerKW) || 0,
+// //       isOwner: true,
+// //       createdAt: new Date()
+// //     };
+    
+// //     const result = await db.collection('chargingStatus').insertOne(chargingData);
+    
+// //     // Update owner session
+// //     if (sessionId && ObjectId.isValid(sessionId)) {
+// //       await db.collection('ownerSessions').updateOne(
+// //         { _id: new ObjectId(sessionId) },
+// //         {
+// //           $set: {
+// //             chargingCompleted: true,
+// //             chargingCompletedAt: new Date(),
+// //             status: 'completed',
+// //             updatedAt: new Date()
+// //           }
+// //         }
+// //       );
+// //     }
+    
+// //     console.log(`✅ Owner charging session completed: ${sessionId}`);
+// //     res.json({ message: "Owner charging session saved", id: result.insertedId });
+// //   } catch (error) {
+// //     console.error('❌ Error saving owner charging session:', error);
+// //     res.status(500).json({ error: "Internal error" });
+// //   }
+// // });
+// // const PORT = process.env.PORT || 5000;
+// // app.listen(PORT, () => {
+// //   console.log(`🚀 Server running on port ${PORT}`);
+// // });
+
+
+
+// const express = require('express');
+// const { ObjectId } = require('mongodb');
+// const connectDB = require('./config/mongo');
+// const cors = require('cors');
+// const https = require('https');
+// const OCPPServer = require('./ocpp/ocpp-server');
+
+// const app = express();
+// app.use(cors());
+// app.use(express.json());
+
+// // Custom fetch function using Node.js built-in https module (no external dependencies)
+// function customFetch(url, options = {}) {
+//   return new Promise((resolve, reject) => {
+//     const urlObj = new URL(url);
+//     const requestOptions = {
+//       hostname: urlObj.hostname,
+//       port: urlObj.port || 443,
+//       path: urlObj.pathname + urlObj.search,
+//       method: options.method || 'GET',
+//       headers: options.headers || {}
+//     };
+
+//     const req = https.request(requestOptions, (res) => {
+//       let data = '';
+//       res.on('data', (chunk) => data += chunk);
+//       res.on('end', () => {
+//         resolve({
+//           ok: res.statusCode >= 200 && res.statusCode < 300,
+//           status: res.statusCode,
+//           json: () => Promise.resolve(JSON.parse(data)),
+//           text: () => Promise.resolve(data)
+//         });
+//       });
+//     });
+
+//     req.on('error', reject);
+    
+//     if (options.body) {
+//       req.write(options.body);
+//     }
+    
+//     req.end();
+//   });
+// }
+
+// // After connecting to MongoDB, initialize OCPP server and all other services
+// connectDB().then((db) => {
+//   const chargers = db.collection('chargers');
+//   const orders = db.collection('orders');
+//   const chargingStatus = db.collection('chargingStatus');
+//   const tempReservations = db.collection('tempReservations');
+//   const ownerSessions = db.collection('ownerSessions');
+
+//   console.log("✅ Connected to MongoDB collections");
+
+//   // Initialize OCPP server
+//   const ocppServer = new OCPPServer(8080, db);
+
+//   // Clean up expired temporary reservations on startup
+//   cleanupExpiredTempReservations();
+  
+//   // Run cleanup every 5 minutes
+//   setInterval(cleanupExpiredTempReservations, 5 * 60 * 1000);
+
+//   async function cleanupExpiredTempReservations() {
+//     try {
+//       const result = await tempReservations.deleteMany({
+//         expiresAt: { $lt: new Date() }
+//       });
+//       if (result.deletedCount > 0) {
+//         console.log(`🧹 Cleaned up ${result.deletedCount} expired temporary reservations`);
+//       }
+//     } catch (error) {
+//       console.error('❌ Error cleaning up expired reservations:', error);
+//     }
+//   }
+
+//   // Basic route
+//   app.get('/', (req, res) => res.send('🚀 EV Charging Backend Running!'));
+
+//   // ========== OCPP API ENDPOINTS ==========
+//   app.get('/api/ocpp/charge-points', (req, res) => {
+//     const connectedChargePoints = ocppServer.getConnectedChargePoints();
+//     res.json({ chargePoints: connectedChargePoints });
+//   });
+
+//   app.get('/api/ocpp/status/:chargePointId', (req, res) => {
+//     const { chargePointId } = req.params;
+//     const status = ocppServer.getChargePointStatus(chargePointId);
+    
+//     if (!status) {
+//       return res.status(404).json({ error: 'Charge point not connected' });
+//     }
+    
+//     res.json(status);
+//   });
+
+//   app.get('/api/ocpp/status', (req, res) => {
+//     const allStatuses = ocppServer.getAllChargePointStatuses();
+//     res.json(allStatuses);
+//   });
+
+//   // Remote control endpoints
+//   app.post('/api/ocpp/remote-start/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { idTag, connectorId } = req.body;
+
+//       if (!idTag) {
+//         return res.status(400).json({ error: 'idTag is required' });
+//       }
+
+//       const messageId = await ocppServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+//       if (!messageId) {
+//         return res.status(400).json({ error: 'Charge point not connected' });
+//       }
+
+//       res.json({ message: 'Remote start command sent', messageId });
+//     } catch (error) {
+//       console.error('❌ Remote start error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   app.post('/api/ocpp/remote-stop/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { transactionId } = req.body;
+
+//       if (!transactionId) {
+//         return res.status(400).json({ error: 'transactionId is required' });
+//       }
+
+//       const messageId = await ocppServer.remoteStopTransaction(chargePointId, transactionId);
+      
+//       if (!messageId) {
+//         return res.status(400).json({ error: 'Charge point not connected' });
+//       }
+
+//       res.json({ message: 'Remote stop command sent', messageId });
+//     } catch (error) {
+//       console.error('❌ Remote stop error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   app.post('/api/ocpp/unlock/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { connectorId } = req.body;
+
+//       const messageId = await ocppServer.unlockConnector(chargePointId, connectorId);
+      
+//       if (!messageId) {
+//         return res.status(400).json({ error: 'Charge point not connected' });
+//       }
+
+//       res.json({ message: 'Unlock command sent', messageId });
+//     } catch (error) {
+//       console.error('❌ Unlock error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   app.post('/api/ocpp/reset/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { type } = req.body;
+
+//       const messageId = await ocppServer.resetChargePoint(chargePointId, type);
+      
+//       if (!messageId) {
+//         return res.status(400).json({ error: 'Charge point not connected' });
+//       }
+
+//       res.json({ message: 'Reset command sent', messageId });
+//     } catch (error) {
+//       console.error('❌ Reset error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get OCPP transactions
+//   app.get('/api/ocpp/transactions', async (req, res) => {
+//     try {
+//       const transactions = await db.collection('ocppTransactions')
+//         .find({})
+//         .sort({ createdAt: -1 })
+//         .toArray();
+      
+//       res.json(transactions);
+//     } catch (error) {
+//       console.error('❌ Error fetching OCPP transactions:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get meter values
+//   app.get('/api/ocpp/meter-values/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const meterValues = await db.collection('ocppMeterValues')
+//         .find({ chargerId: chargePointId })
+//         .sort({ timestamp: -1 })
+//         .limit(100)
+//         .toArray();
+      
+//       res.json(meterValues);
+//     } catch (error) {
+//       console.error('❌ Error fetching meter values:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== CHARGER MANAGEMENT ENDPOINTS ==========
+//   app.get('/api/chargers', async (req, res) => {
+//     try {
+//       console.log("📤 GET /api/chargers - Fetching available chargers");
+      
+//       // Get all chargers that are not permanently reserved
+//       const allChargers = await chargers.find({
+//         $or: [
+//           { reserved: { $exists: false } },
+//           { reserved: false }
+//         ]
+//       }).toArray();
+
+//       // Get active temporary reservations
+//       const activeReservations = await tempReservations.find({
+//         expiresAt: { $gt: new Date() }
+//       }).toArray();
+
+//       const tempReservedChargerIds = new Set(
+//         activeReservations.map(res => res.chargerId)
+//       );
+
+//       // Filter out temporarily reserved chargers
+//       const availableChargers = allChargers.filter(charger => 
+//         !tempReservedChargerIds.has(charger.chargerId)
+//       );
+
+//       console.log(`✅ Found ${availableChargers.length} available chargers (${allChargers.length} total, ${tempReservedChargerIds.size} temp reserved)`);
+//       res.json(availableChargers);
+//     } catch (err) {
+//       console.error('❌ Error fetching chargers:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // Temporary reservation endpoint
+//   app.post('/api/temp-reserve-charger', async (req, res) => {
+//     try {
+//       const { chargerId, expiryMinutes = 10 } = req.body;
+
+//       if (!chargerId) {
+//         return res.status(400).json({ error: "Charger ID is required" });
+//       }
+
+//       // Check if charger exists and is available
+//       const charger = await chargers.findOne({ chargerId });
+//       if (!charger) {
+//         return res.status(404).json({ error: "Charger not found" });
+//       }
+
+//       if (charger.reserved) {
+//         return res.status(400).json({ error: "Charger is permanently reserved" });
+//       }
+
+//       // Check if already temporarily reserved
+//       const existingReservation = await tempReservations.findOne({
+//         chargerId,
+//         expiresAt: { $gt: new Date() }
+//       });
+
+//       if (existingReservation) {
+//         return res.status(400).json({ error: "Charger is temporarily reserved by another user" });
+//       }
+
+//       // Create temporary reservation
+//       const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
+//       await tempReservations.insertOne({
+//         chargerId,
+//         createdAt: new Date(),
+//         expiresAt,
+//         expiryMinutes
+//       });
+
+//       console.log(`✅ Charger ${chargerId} temporarily reserved for ${expiryMinutes} minutes`);
+//       res.json({ 
+//         message: "Charger temporarily reserved", 
+//         chargerId, 
+//         expiresAt 
+//       });
+
+//     } catch (error) {
+//       console.error('❌ Error creating temporary reservation:', error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // Release temporary reservation endpoint
+//   app.post('/api/release-temp-reservation', async (req, res) => {
+//     try {
+//       const { chargerId } = req.body;
+
+//       if (!chargerId) {
+//         return res.status(400).json({ error: "Charger ID is required" });
+//       }
+
+//       const result = await tempReservations.deleteMany({ chargerId });
+      
+//       console.log(`✅ Released temporary reservation for charger ${chargerId} (${result.deletedCount} records removed)`);
+//       res.json({ 
+//         message: "Temporary reservation released", 
+//         chargerId,
+//         removedCount: result.deletedCount
+//       });
+
+//     } catch (error) {
+//       console.error('❌ Error releasing temporary reservation:', error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // Permanent reservation endpoint (only after payment success)
+//   app.post('/api/reserve-charger', async (req, res) => {
+//     try {
+//       const { chargerId, orderId, customerEmail, customerName } = req.body;
+
+//       if (!chargerId || !orderId) {
+//         return res.status(400).json({ error: "Charger ID and Order ID are required" });
+//       }
+
+//       // Check if charger is available
+//       const charger = await chargers.findOne({ chargerId });
+//       if (!charger) {
+//         return res.status(404).json({ error: "Charger not found" });
+//       }
+
+//       if (charger.reserved) {
+//         return res.status(400).json({ error: "Charger is already permanently reserved" });
+//       }
+
+//       // Permanently reserve the charger
+//       await chargers.updateOne(
+//         { chargerId },
+//         { 
+//           $set: { 
+//             reserved: true, 
+//             reservedAt: new Date(),
+//             reservedBy: orderId,
+//             customerEmail,
+//             customerName
+//           } 
+//         }
+//       );
+
+//       // Remove any temporary reservations for this charger
+//       await tempReservations.deleteMany({ chargerId });
+
+//       console.log(`✅ Charger ${chargerId} permanently reserved for order ${orderId}`);
+//       res.json({ 
+//         message: "Charger permanently reserved", 
+//         chargerId, 
+//         orderId 
+//       });
+
+//     } catch (error) {
+//       console.error('❌ Error creating permanent reservation:', error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // Release charger by order ID
+//   app.post('/api/release-charger-by-order', async (req, res) => {
+//     try {
+//       const { orderId } = req.body;
+
+//       if (!orderId) {
+//         return res.status(400).json({ error: "Order ID is required" });
+//       }
+
+//       // Release permanent reservation
+//       const chargerResult = await chargers.updateMany(
+//         { reservedBy: orderId },
+//         { 
+//           $set: { reserved: false },
+//           $unset: { reservedAt: "", reservedBy: "", customerEmail: "", customerName: "" }
+//         }
+//       );
+
+//       // Also release any temporary reservations (cleanup)
+//       const tempResult = await tempReservations.deleteMany({});
+
+//       console.log(`✅ Released reservations for order ${orderId} (${chargerResult.modifiedCount} permanent, ${tempResult.deletedCount} temporary)`);
+//       res.json({ 
+//         message: "Reservations released", 
+//         orderId,
+//         permanentReleased: chargerResult.modifiedCount,
+//         temporaryReleased: tempResult.deletedCount
+//       });
+
+//     } catch (error) {
+//       console.error('❌ Error releasing charger by order:', error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // Initiate refund endpoint
+//   app.post('/api/initiate-refund', async (req, res) => {
+//     try {
+//       const { orderId } = req.body;
+
+//       if (!orderId || !ObjectId.isValid(orderId)) {
+//         return res.status(400).json({ error: "Valid Order ID is required" });
+//       }
+
+//       // Get order details
+//       const order = await orders.findOne({ _id: new ObjectId(orderId) });
+//       if (!order) {
+//         return res.status(404).json({ error: "Order not found" });
+//       }
+
+//       // Mark order for refund
+//       await orders.updateOne(
+//         { _id: new ObjectId(orderId) },
+//         { 
+//           $set: { 
+//             refundRequested: true,
+//             refundRequestedAt: new Date(),
+//             status: 'refund_requested',
+//             updatedAt: new Date()
+//           } 
+//         }
+//       );
+
+//       // Here you would integrate with Mollie's refund API
+//       // For now, we'll just log it
+//       console.log(`✅ Refund initiated for order ${orderId}, payment ID: ${order.molliePaymentId || order.paymentId}`);
+      
+//       // TODO: Integrate with Mollie refund API
+//       // const refundResponse = await customFetch(`https://api.mollie.com/v2/payments/${order.molliePaymentId}/refunds`, {
+//       //   method: 'POST',
+//       //   headers: {
+//       //     'Authorization': `Bearer ${MOLLIE_API_KEY}`,
+//       //     'Content-Type': 'application/json'
+//       //   },
+//       //   body: JSON.stringify({
+//       //     amount: {
+//       //       currency: 'EUR',
+//       //       value: order.paymentAmount
+//       //     }
+//       //   })
+//       // });
+
+//       res.json({ 
+//         message: "Refund initiated", 
+//         orderId,
+//         paymentId: order.molliePaymentId || order.paymentId
+//       });
+
+//     } catch (error) {
+//       console.error('❌ Error initiating refund:', error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // ========== ORDER MANAGEMENT ENDPOINTS ==========
+//   // Save order (does NOT permanently reserve charger)
+//   app.post('/api/save-order', async (req, res) => {
+//     try {
+//       const { charger, firstName, lastName, email, phone, timestamp } = req.body;
+
+//       if (!charger?.chargerId || !firstName || !lastName || !email || !phone) {
+//         return res.status(400).json({ error: "Missing required information" });
+//       }
+
+//       const chargerDoc = await chargers.findOne({ chargerId: charger.chargerId });
+//       if (!chargerDoc) {
+//         return res.status(400).json({ error: "Charger not found" });
+//       }
+
+//       if (chargerDoc.reserved) {
+//         return res.status(400).json({ error: "Charger is permanently reserved" });
+//       }
+
+//       // Check if temporarily reserved by someone else
+//       const tempReservation = await tempReservations.findOne({
+//         chargerId: charger.chargerId,
+//         expiresAt: { $gt: new Date() }
+//       });
+
+//       if (tempReservation) {
+//         return res.status(400).json({ error: "Charger is temporarily reserved by another user" });
+//       }
+
+//       // DON'T reserve the charger permanently here - only after payment success
+//       const orderData = {
+//         charger,
+//         firstName: firstName.trim(),
+//         lastName: lastName.trim(),
+//         email: email.trim(),
+//         phone: phone.trim(),
+//         timestamp: timestamp || new Date().toISOString(),
+//         paid: false,
+//         paymentStatus: 'pending',
+//         chargingStarted: false,
+//         chargingCompleted: false,
+//         createdAt: new Date(),
+//         status: 'pending'
+//       };
+
+//       const result = await orders.insertOne(orderData);
+//       console.log(`✅ Order saved with ID: ${result.insertedId}, Status: pending (charger NOT reserved yet)`);
+//       res.status(200).json({ message: "Order saved", id: result.insertedId });
+//     } catch (err) {
+//       console.error('❌ Error saving order:', err);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   app.get('/api/get-order/:id', async (req, res) => {
+//     try {
+//       const id = req.params.id;
+//       if (!ObjectId.isValid(id)) {
+//         console.error(`❌ Invalid order ID format: ${id}`);
+//         return res.status(400).json({ error: "Invalid ID" });
+//       }
+
+//       const order = await orders.findOne({ _id: new ObjectId(id) });
+//       if (!order) {
+//         console.error(`❌ Order not found: ${id}`);
+//         return res.status(404).json({ error: "Order not found" });
+//       }
+
+//       // Enhanced logging for debugging payment status issues
+//       console.log(`✅ Order retrieved: ${id}`, {
+//         status: order.status,
+//         paid: order.paid,
+//         paymentStatus: order.paymentStatus,
+//         molliePaymentId: order.molliePaymentId,
+//         paidAt: order.paidAt
+//       });
+
+//       res.json(order);
+//     } catch (err) {
+//       console.error('❌ Error fetching order:', err);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // ========== PAYMENT ENDPOINTS ==========
+//   // Payment creation notification from frontend
+//   app.post('/api/payment-created', async (req, res) => {
+//     try {
+//       const { orderId, molliePaymentId, paymentStatus, amount, customerInfo, timestamp } = req.body;
+      
+//       if (!orderId || !ObjectId.isValid(orderId)) {
+//         return res.status(400).json({ error: "Invalid order ID" });
+//       }
+
+//       const updateData = {
+//         molliePaymentId,
+//         paymentStatus: paymentStatus || 'open',
+//         paymentAmount: amount,
+//         paymentCreatedAt: new Date(timestamp),
+//         updatedAt: new Date()
+//       };
+
+//       await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+//       console.log(`✅ Payment creation recorded for order: ${orderId}, Mollie ID: ${molliePaymentId}`);
+      
+//       res.json({ message: "Payment creation recorded" });
+//     } catch (err) {
+//       console.error('❌ Error recording payment creation:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // Generic payment webhook (for manual updates)
+//   app.post('/api/payment-webhook', async (req, res) => {
+//     try {
+//       const { orderId, paymentStatus, paymentId, paymentMethod } = req.body;
+//       if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid order ID" });
+
+//       const updateData = {
+//         paid: paymentStatus === 'paid',
+//         paymentStatus,
+//         paymentId,
+//         paymentMethod,
+//         paidAt: paymentStatus === 'paid' ? new Date() : null,
+//         status: paymentStatus === 'paid' ? 'paid' : (paymentStatus === 'failed' || paymentStatus === 'cancelled' ? paymentStatus : 'pending'),
+//         updatedAt: new Date()
+//       };
+
+//       await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+//       console.log(`✅ Payment webhook updated order: ${orderId}, Status: ${paymentStatus}`);
+//       res.json({ message: "Webhook updated" });
+//     } catch (err) {
+//       console.error('❌ Error processing payment webhook:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // Mollie webhook - handles charger reservation on payment success
+//   app.post('/api/mollie-webhook', async (req, res) => {
+//     try {
+//       const { id: paymentId } = req.body;
+      
+//       if (!paymentId) {
+//         console.error("❌ Mollie webhook: Missing payment ID");
+//         return res.status(400).json({ error: "Missing payment ID" });
+//       }
+
+//       console.log(`📥 Mollie webhook received for payment: ${paymentId}`);
+
+//       const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+
+//       // Fetch payment details from Mollie using custom fetch
+//       const response = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+//         headers: {
+//           "Authorization": `Bearer ${MOLLIE_API_KEY}`,
+//           "Content-Type": "application/json"
+//         }
+//       });
+
+//       if (!response.ok) {
+//         console.error(`❌ Failed to fetch payment from Mollie: ${response.status}`);
+//         return res.status(400).json({ error: "Failed to fetch payment data" });
+//       }
+
+//       const paymentData = await response.json();
+//       console.log(`📋 Mollie payment data:`, {
+//         id: paymentData.id,
+//         status: paymentData.status,
+//         method: paymentData.method,
+//         amount: paymentData.amount,
+//         metadata: paymentData.metadata
+//       });
+
+//       // Update order with payment information
+//       if (paymentData?.metadata?.orderId) {
+//         const orderId = paymentData.metadata.orderId;
+
+//         const updateData = {
+//           paid: paymentData.status === 'paid',
+//           paymentStatus: paymentData.status,
+//           paymentId,
+//           paymentMethod: paymentData.method,
+//           paidAt: paymentData.status === 'paid' && paymentData.paidAt ? new Date(paymentData.paidAt) : null,
+//           status: paymentData.status === 'paid' ? 'paid' : 
+//                  (paymentData.status === 'failed' || paymentData.status === 'cancelled' || paymentData.status === 'expired') ? paymentData.status : 'pending',
+//           mollieWebhookAt: new Date(),
+//           updatedAt: new Date()
+//         };
+
+//         const result = await orders.updateOne(
+//           { _id: new ObjectId(orderId) },
+//           { $set: updateData }
+//         );
+
+//         if (result.matchedCount > 0) {
+//           console.log(`✅ Order ${orderId} updated with payment status: ${paymentData.status}`, {
+//             paid: updateData.paid,
+//             paymentStatus: updateData.paymentStatus,
+//             status: updateData.status
+//           });
+
+//           // If payment successful, permanently reserve the charger
+//           if (paymentData.status === 'paid') {
+//             try {
+//               const order = await orders.findOne({ _id: new ObjectId(orderId) });
+//               if (order && order.charger && order.charger.chargerId) {
+//                 await chargers.updateOne(
+//                   { chargerId: order.charger.chargerId },
+//                   { 
+//                     $set: { 
+//                       reserved: true, 
+//                       reservedAt: new Date(),
+//                       reservedBy: orderId,
+//                       customerEmail: order.email,
+//                       customerName: `${order.firstName} ${order.lastName}`
+//                     } 
+//                   }
+//                 );
+
+//                 // Remove temporary reservation
+//                 await tempReservations.deleteMany({ chargerId: order.charger.chargerId });
+
+//                 console.log(`✅ Charger ${order.charger.chargerId} permanently reserved after payment success`);
+//               }
+//             } catch (reservationError) {
+//               console.error("❌ Failed to reserve charger after payment success:", reservationError);
+//             }
+//           }
+
+//           // If payment failed, release temporary reservations
+//           if (paymentData.status === 'failed' || paymentData.status === 'cancelled' || paymentData.status === 'expired') {
+//             try {
+//               const order = await orders.findOne({ _id: new ObjectId(orderId) });
+//               if (order && order.charger && order.charger.chargerId) {
+//                 await tempReservations.deleteMany({ chargerId: order.charger.chargerId });
+//                 console.log(`✅ Temporary reservation released for charger ${order.charger.chargerId} due to payment failure`);
+//               }
+//             } catch (releaseError) {
+//               console.error("❌ Failed to release temporary reservation:", releaseError);
+//             }
+//           }
+
+//         } else {
+//           console.error(`❌ Order ${orderId} not found for payment update`);
+//         }
+//       } else {
+//         console.error("❌ No order ID found in payment metadata");
+//       }
+
+//       res.status(200).send("OK");
+//     } catch (err) {
+//       console.error("❌ Mollie webhook processing failed:", err);
+//       res.status(500).json({ error: "Webhook processing failed" });
+//     }
+//   });
+
+//   // Direct Mollie payment verification endpoint
+//   app.get('/api/verify-mollie-payment/:paymentId', async (req, res) => {
+//     try {
+//       const { paymentId } = req.params;
+      
+//       console.log("🔍 Direct Mollie verification requested for payment:", paymentId);
+      
+//       if (!paymentId) {
+//         return res.status(400).json({ 
+//           success: false, 
+//           error: 'Payment ID is required' 
+//         });
+//       }
+      
+//       const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+      
+//       // Verify payment directly with Mollie API
+//       const mollieResponse = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+//         method: 'GET',
+//         headers: {
+//           'Authorization': `Bearer ${MOLLIE_API_KEY}`,
+//           'Content-Type': 'application/json'
+//         }
+//       });
+      
+//       if (!mollieResponse.ok) {
+//         console.error("❌ Mollie API error:", mollieResponse.status);
+//         const errorText = await mollieResponse.text();
+//         return res.status(mollieResponse.status).json({ 
+//           success: false, 
+//           error: `Mollie API error: ${errorText}` 
+//         });
+//       }
+      
+//       const paymentData = await mollieResponse.json();
+//       console.log("📋 Mollie payment data:", {
+//         id: paymentData.id,
+//         status: paymentData.status,
+//         amount: paymentData.amount
+//       });
+      
+//       const isPaid = paymentData.status === 'paid';
+      
+//       // If payment is confirmed as paid, update our database AND reserve charger
+//       if (isPaid && paymentData.metadata && paymentData.metadata.orderId) {
+//         try {
+//           console.log("✅ Payment confirmed paid, updating database and reserving charger...");
+          
+//           const updateData = {
+//             paid: true,
+//             paymentStatus: 'paid',
+//             status: 'paid',
+//             paidAt: paymentData.paidAt ? new Date(paymentData.paidAt) : new Date(),
+//             mollieDirectVerifiedAt: new Date(),
+//             updatedAt: new Date()
+//           };
+          
+//           const updateResult = await orders.updateOne(
+//             { _id: new ObjectId(paymentData.metadata.orderId) },
+//             { $set: updateData }
+//           );
+
+//           // Reserve charger permanently
+//           if (updateResult.matchedCount > 0) {
+//             const order = await orders.findOne({ _id: new ObjectId(paymentData.metadata.orderId) });
+//             if (order && order.charger && order.charger.chargerId) {
+//               await chargers.updateOne(
+//                 { chargerId: order.charger.chargerId },
+//                 { 
+//                   $set: { 
+//                     reserved: true, 
+//                     reservedAt: new Date(),
+//                     reservedBy: paymentData.metadata.orderId,
+//                     customerEmail: order.email,
+//                     customerName: `${order.firstName} ${order.lastName}`
+//                   } 
+//                 }
+//               );
+
+//               // Remove temporary reservation
+//               await tempReservations.deleteMany({ chargerId: order.charger.chargerId });
+
+//               console.log(`✅ Charger ${order.charger.chargerId} permanently reserved after direct verification`);
+//             }
+//           }
+          
+//           console.log("📋 Database update result:", {
+//             matchedCount: updateResult.matchedCount,
+//             modifiedCount: updateResult.modifiedCount
+//           });
+          
+//         } catch (dbError) {
+//           console.error("❌ Failed to update database:", dbError);
+//           // Don't fail the verification if DB update fails
+//         }
+//       }
+      
+//       res.json({
+//         success: true,
+//         payment: {
+//           id: paymentData.id,
+//           status: paymentData.status,
+//           amount: paymentData.amount,
+//           description: paymentData.description,
+//           createdAt: paymentData.createdAt,
+//           paidAt: paymentData.paidAt
+//         },
+//         isPaid: isPaid,
+//         status: paymentData.status
+//       });
+      
+//     } catch (error) {
+//       console.error("❌ Direct Mollie verification error:", error);
+//       res.status(500).json({ 
+//         success: false, 
+//         error: 'Internal server error during payment verification' 
+//       });
+//     }
+//   });
+
+//   // Manual payment status update endpoint (for testing/debugging)
+//   app.post('/api/update-payment-status/:orderId', async (req, res) => {
+//     try {
+//       const orderId = req.params.orderId;
+//       const { paymentStatus, paid } = req.body;
+      
+//       if (!ObjectId.isValid(orderId)) {
+//         return res.status(400).json({ error: "Invalid order ID" });
+//       }
+      
+//       const updateData = {
+//         paid: paid === true || paymentStatus === 'paid',
+//         paymentStatus: paymentStatus || 'paid',
+//         status: paymentStatus === 'paid' ? 'paid' : paymentStatus,
+//         paidAt: (paid === true || paymentStatus === 'paid') ? new Date() : null,
+//         manuallyUpdatedAt: new Date(),
+//         updatedAt: new Date()
+//       };
+      
+//       const result = await orders.updateOne(
+//         { _id: new ObjectId(orderId) },
+//         { $set: updateData }
+//       );
+      
+//       if (result.matchedCount === 0) {
+//         return res.status(404).json({ error: "Order not found" });
+//       }
+
+//       // If manually marking as paid, reserve the charger
+//       if (paid === true || paymentStatus === 'paid') {
+//         try {
+//           const order = await orders.findOne({ _id: new ObjectId(orderId) });
+//           if (order && order.charger && order.charger.chargerId) {
+//             await chargers.updateOne(
+//               { chargerId: order.charger.chargerId },
+//               { 
+//                 $set: { 
+//                   reserved: true, 
+//                   reservedAt: new Date(),
+//                   reservedBy: orderId,
+//                   customerEmail: order.email,
+//                   customerName: `${order.firstName} ${order.lastName}`
+//                 } 
+//               }
+//             );
+
+//             // Remove temporary reservation
+//             await tempReservations.deleteMany({ chargerId: order.charger.chargerId });
+
+//             console.log(`✅ Charger ${order.charger.chargerId} reserved after manual payment update`);
+//           }
+//         } catch (reservationError) {
+//           console.error("❌ Failed to reserve charger after manual update:", reservationError);
+//         }
+//       }
+      
+//       console.log(`✅ Manual payment status update for order: ${orderId}`, updateData);
+//       res.json({ message: "Payment status updated", updateData });
+      
+//     } catch (error) {
+//       console.error("❌ Error updating payment status:", error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // ========== CHARGING CONTROL ENDPOINTS ==========
+//   // Start charging - only allow if payment is confirmed
+//   app.post('/api/start-charging/:id', async (req, res) => {
+//     try {
+//       const id = req.params.id;
+//       if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid order ID" });
+
+//       // Check if order exists and payment is confirmed
+//       const order = await orders.findOne({ _id: new ObjectId(id) });
+//       if (!order) {
+//         console.error(`❌ Order not found for charging start: ${id}`);
+//         return res.status(404).json({ error: "Order not found" });
+//       }
+
+//       // ENHANCED PAYMENT CHECK: More flexible status checking
+//       const isPaymentConfirmed = order.paid === true || 
+//                                 order.paymentStatus === 'paid' || 
+//                                 order.status === 'paid';
+
+//       console.log(`🔍 Charging start request for order: ${id}`, {
+//         paid: order.paid,
+//         paymentStatus: order.paymentStatus,
+//         status: order.status,
+//         isPaymentConfirmed: isPaymentConfirmed
+//       });
+
+//       if (!isPaymentConfirmed) {
+//         console.error(`❌ Charging start denied - Payment not confirmed. Order: ${id}`, {
+//           status: order.status,
+//           paid: order.paid,
+//           paymentStatus: order.paymentStatus
+//         });
+//         return res.status(400).json({ 
+//           error: "Payment not confirmed", 
+//           currentStatus: order.paymentStatus || order.status,
+//           paid: order.paid,
+//           debug: {
+//             paid: order.paid,
+//             paymentStatus: order.paymentStatus,
+//             status: order.status
+//           }
+//         });
+//       }
+
+//       // Update order to mark charging as started
+//       await orders.updateOne(
+//         { _id: new ObjectId(id) },
+//         {
+//           $set: {
+//             chargingStarted: true,
+//             chargingStartedAt: new Date(),
+//             status: 'charging',
+//             updatedAt: new Date()
+//           }
+//         }
+//       );
+
+//       console.log(`✅ Charging started for order: ${id}`);
+//       res.json({ message: "Charging started", orderId: id });
+//     } catch (err) {
+//       console.error('❌ Error starting charging:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   app.post('/api/charging-status', async (req, res) => {
+//     try {
+//       const { orderId, startTime, endTime, durationSeconds, amountPaid, powerKW } = req.body;
+//       if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid data" });
+
+//       const order = await orders.findOne({ _id: new ObjectId(orderId) });
+//       if (!order) return res.status(404).json({ error: "Order not found" });
+
+//       const chargingData = {
+//         orderId: new ObjectId(orderId),
+//         startTime: new Date(startTime),
+//         endTime: endTime ? new Date(endTime) : new Date(),
+//         durationSeconds,
+//         amountPaid: parseFloat(amountPaid) || 0,
+//         powerKW: parseFloat(powerKW) || 0,
+//         userPhone: order.phone,
+//         userEmail: order.email,
+//         userName: `${order.firstName} ${order.lastName}`,
+//         charger: order.charger,
+//         createdAt: new Date()
+//       };
+
+//       const result = await chargingStatus.insertOne(chargingData);
+
+//       await orders.updateOne(
+//         { _id: new ObjectId(orderId) },
+//         {
+//           $set: {
+//             chargingCompleted: true,
+//             chargingCompletedAt: new Date(),
+//             status: 'completed',
+//             finalAmount: parseFloat(amountPaid) || 0,
+//             updatedAt: new Date()
+//           }
+//         }
+//       );
+
+//       // Release charger
+//       if (order.charger?.chargerId) {
+//         await chargers.updateOne(
+//           { chargerId: order.charger.chargerId },
+//           {
+//             $set: { reserved: false, lastUsed: new Date() },
+//             $unset: { reservedAt: "", reservedBy: "", customerEmail: "", customerName: "" }
+//           }
+//         );
+//         console.log(`✅ Charger ${order.charger.chargerId} released`);
+//       }
+
+//       console.log(`✅ Charging session completed for order: ${orderId}`);
+//       res.status(200).json({ message: "Charging session saved", id: result.insertedId });
+//     } catch (err) {
+//       console.error('❌ Error saving charging session:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // ========== OWNER SESSION ENDPOINTS ==========
+//   app.post('/api/create-owner-session', async (req, res) => {
+//     try {
+//       const { charger, isOwner, timestamp } = req.body;
+      
+//       const ownerSession = {
+//         charger,
+//         isOwner: true,
+//         timestamp: timestamp || new Date().toISOString(),
+//         sessionType: 'owner',
+//         paid: true,
+//         paymentStatus: 'owner_session',
+//         createdAt: new Date(),
+//         status: 'active'
+//       };
+      
+//       const result = await ownerSessions.insertOne(ownerSession);
+//       console.log(`✅ Owner session created: ${result.insertedId}`);
+      
+//       res.json({ 
+//         message: "Owner session created", 
+//         sessionId: result.insertedId,
+//         session: ownerSession 
+//       });
+//     } catch (error) {
+//       console.error('❌ Error creating owner session:', error);
+//       res.status(500).json({ error: "Failed to create owner session" });
+//     }
+//   });
+
+//   app.get('/api/get-owner-session/:id', async (req, res) => {
+//     try {
+//       const id = req.params.id;
+//       if (!ObjectId.isValid(id)) {
+//         return res.status(400).json({ error: "Invalid session ID" });
+//       }
+      
+//       const ownerSession = await ownerSessions.findOne({ _id: new ObjectId(id) });
+//       if (!ownerSession) {
+//         return res.status(404).json({ error: "Owner session not found" });
+//       }
+      
+//       res.json(ownerSession);
+//     } catch (error) {
+//       console.error('❌ Error fetching owner session:', error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   app.post('/api/start-owner-charging/:id', async (req, res) => {
+//     try {
+//       const id = req.params.id;
+//       if (!ObjectId.isValid(id)) {
+//         return res.status(400).json({ error: "Invalid session ID" });
+//       }
+      
+//       const updateResult = await ownerSessions.updateOne(
+//         { _id: new ObjectId(id) },
+//         {
+//           $set: {
+//             chargingStarted: true,
+//             chargingStartedAt: new Date(),
+//             status: 'charging',
+//             updatedAt: new Date()
+//           }
+//         }
+//       );
+      
+//       if (updateResult.matchedCount === 0) {
+//         return res.status(404).json({ error: "Owner session not found" });
+//       }
+      
+//       console.log(`✅ Owner charging started for session: ${id}`);
+//       res.json({ message: "Owner charging started", sessionId: id });
+//     } catch (error) {
+//       console.error('❌ Error starting owner charging:', error);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   app.post('/api/owner-charging-status', async (req, res) => {
+//     try {
+//       const { sessionId, startTime, endTime, durationSeconds, amountPaid, powerKW, userInfo } = req.body;
+      
+//       const chargingData = {
+//         sessionId: sessionId ? new ObjectId(sessionId) : null,
+//         sessionType: 'owner',
+//         startTime: new Date(startTime),
+//         endTime: endTime ? new Date(endTime) : new Date(),
+//         durationSeconds,
+//         amountPaid: 0, // Owner sessions are free
+//         powerKW: parseFloat(powerKW) || 0,
+//         isOwner: true,
+//         createdAt: new Date()
+//       };
+      
+//       const result = await chargingStatus.insertOne(chargingData);
+      
+//       // Update owner session
+//       if (sessionId && ObjectId.isValid(sessionId)) {
+//         await ownerSessions.updateOne(
+//           { _id: new ObjectId(sessionId) },
+//           {
+//             $set: {
+//               chargingCompleted: true,
+//               chargingCompletedAt: new Date(),
+//               status: 'completed',
+//               updatedAt: new Date()
+//             }
+//           }
+//         );
+//       }
+      
+//       console.log(`✅ Owner charging session completed: ${sessionId}`);
+//       res.json({ message: "Owner charging session saved", id: result.insertedId });
+//     } catch (error) {
+//       console.error('❌ Error saving owner charging session:', error);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // ========== ADMIN ENDPOINTS ==========
+//   app.get('/api/orders', async (req, res) => {
+//     try {
+//       const allOrders = await orders.find({}).sort({ createdAt: -1 }).toArray();
+//       res.json(allOrders);
+//     } catch (err) {
+//       console.error('❌ Error fetching orders:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   app.get('/api/charging-sessions', async (req, res) => {
+//     try {
+//       const sessions = await chargingStatus.find({}).sort({ createdAt: -1 }).toArray();
+//       res.json(sessions);
+//     } catch (err) {
+//       console.error('❌ Error fetching charging sessions:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   app.get('/api/charging-sessions/:orderId', async (req, res) => {
+//     try {
+//       const orderId = req.params.orderId;
+//       if (!ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid ID" });
+
+//       const sessions = await chargingStatus.find({ orderId: new ObjectId(orderId) }).toArray();
+//       res.json(sessions);
+//     } catch (err) {
+//       console.error('❌ Error fetching charging sessions for order:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // Admin endpoint to view temporary reservations
+//   app.get('/api/temp-reservations', async (req, res) => {
+//     try {
+//       const reservations = await tempReservations.find({}).sort({ createdAt: -1 }).toArray();
+//       res.json(reservations);
+//     } catch (err) {
+//       console.error('❌ Error fetching temp reservations:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // Admin endpoint to manually clean expired reservations
+//   app.post('/api/cleanup-expired-reservations', async (req, res) => {
+//     try {
+//       await cleanupExpiredTempReservations();
+//       res.json({ message: "Cleanup completed" });
+//     } catch (err) {
+//       console.error('❌ Error during manual cleanup:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+// }).catch(err => {
+//   console.error("❌ MongoDB connection failed:", err);
+//   process.exit(1);
+// });
+
+// const PORT = process.env.PORT || 5000;
+// app.listen(PORT, () => {
+//   console.log(`🚀 Server running on port ${PORT}`);
+// });
+
+
+// const express = require('express');
+// const { ObjectId } = require('mongodb');
+// const connectDB = require('./config/mongo');
+// const cors = require('cors');
+// const https = require('https');
+
+// // OCPP imports
+// const OCPPWebSocketServer = require('./ocpp/ocpp-websocket-server');
+// const OCPPCMSConfig = require('./ocpp/ocpp-cms-config');
+// // ===== PCB INTEGRATION API ENDPOINTS =====
+// // Add these endpoints to your main server.js file
+
+// // Add this import at the top of your server.js
+// const OCPPPCBIntegration = require('./ocpp/ocpp-pcb-integration');
+
+// // Add this after your database connection
+// let pcbIntegration = null;
+
+// // Inside your connectDB().then() block, after other initializations:
+// connectDB().then((db) => {
+//   // ... existing code ...
+  
+//   // Initialize PCB Integration
+//   pcbIntegration = new OCPPPCBIntegration(db);
+//   console.log('✅ PCB Integration initialized');
+
+//   // ========== PCB DEVICE MANAGEMENT ENDPOINTS ==========
+  
+//   // Register new PCB device
+//   app.post('/api/pcb/register-device', async (req, res) => {
+//     try {
+//       const deviceData = req.body;
+      
+//       // Validate required fields
+//       if (!deviceData.chargePointId || !deviceData.hardwareId) {
+//         return res.status(400).json({ 
+//           error: 'chargePointId and hardwareId are required' 
+//         });
+//       }
+
+//       // Check if device already exists
+//       const existingDevice = await pcbIntegration.pcbDevices.findOne({
+//         $or: [
+//           { hardwareId: deviceData.hardwareId },
+//           { chargePointId: deviceData.chargePointId }
+//         ]
+//       });
+
+//       if (existingDevice) {
+//         return res.status(400).json({ 
+//           error: 'Device with this hardware ID or charge point ID already exists' 
+//         });
+//       }
+
+//       const result = await pcbIntegration.registerPCBDevice(deviceData);
+      
+//       res.json({
+//         message: 'PCB device registered successfully',
+//         device: result,
+//         connectionInstructions: {
+//           step1: 'Flash the provided credentials to your PCB',
+//           step2: 'Connect to WebSocket endpoint using the provided URL',
+//           step3: 'Send authentication headers with each OCPP message',
+//           step4: 'Implement OCPP 1.6 protocol for communication'
+//         }
+//       });
+//     } catch (error) {
+//       console.error('❌ Error registering PCB device:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+//   // Add to your backend server.js
+// app.post('/api/orders/:orderId/credentials', async (req, res) => {
+//   try {
+//     const { orderId } = req.params;
+//     const { ocppCredentials, generatedAt } = req.body;
+
+//     // Update the order with OCPP credentials
+//     await db.collection('orders').updateOne(
+//       { _id: new ObjectId(orderId) },
+//       { 
+//         $set: { 
+//           ocppCredentials,
+//           credentialsGeneratedAt: generatedAt,
+//           updatedAt: new Date()
+//         } 
+//       }
+//     );
+
+//     res.json({ message: 'Credentials saved successfully' });
+//   } catch (error) {
+//     console.error('Error saving credentials:', error);
+//     res.status(500).json({ error: 'Failed to save credentials' });
+//   }
+// });
+
+// // Get order with credentials
+// app.get('/api/orders/:orderId/credentials', async (req, res) => {
+//   try {
+//     const { orderId } = req.params;
+    
+//     const order = await db.collection('orders').findOne({ 
+//       _id: new ObjectId(orderId) 
+//     });
+
+//     if (!order) {
+//       return res.status(404).json({ error: 'Order not found' });
+//     }
+
+//     res.json({
+//       orderId: order._id,
+//       customerName: `${order.firstName} ${order.lastName}`,
+//       email: order.email,
+//       charger: order.charger,
+//       ocppCredentials: order.ocppCredentials,
+//       generatedAt: order.credentialsGeneratedAt
+//     });
+//   } catch (error) {
+//     console.error('Error fetching order credentials:', error);
+//     res.status(500).json({ error: 'Failed to fetch credentials' });
+//   }
+// });
+
+//   // Get all PCB devices
+//   app.get('/api/pcb/devices', async (req, res) => {
+//     try {
+//       const { includeOffline } = req.query;
+//       const devices = await pcbIntegration.getPCBDevices(includeOffline === 'true');
+      
+//       // Remove sensitive information
+//       const sanitizedDevices = devices.map(device => ({
+//         deviceId: device.deviceId,
+//         chargePointId: device.chargePointId,
+//         deviceName: device.deviceName,
+//         status: device.status,
+//         isOnline: device.isOnline,
+//         lastHeartbeat: device.lastHeartbeat,
+//         firmwareVersion: device.firmwareVersion,
+//         capabilities: device.capabilities,
+//         createdAt: device.createdAt
+//       }));
+
+//       res.json(sanitizedDevices);
+//     } catch (error) {
+//       console.error('❌ Error fetching PCB devices:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get specific PCB device details
+//   app.get('/api/pcb/devices/:deviceId', async (req, res) => {
+//     try {
+//       const { deviceId } = req.params;
+//       const device = await pcbIntegration.pcbDevices.findOne({ deviceId });
+
+//       if (!device) {
+//         return res.status(404).json({ error: 'Device not found' });
+//       }
+
+//       // Remove sensitive information
+//       const sanitizedDevice = {
+//         deviceId: device.deviceId,
+//         chargePointId: device.chargePointId,
+//         deviceName: device.deviceName,
+//         status: device.status,
+//         isOnline: device.isOnline,
+//         lastHeartbeat: device.lastHeartbeat,
+//         firmwareVersion: device.firmwareVersion,
+//         hardwareVersion: device.hardwareVersion,
+//         capabilities: device.capabilities,
+//         createdAt: device.createdAt,
+//         lastConnection: device.lastConnection
+//       };
+
+//       res.json(sanitizedDevice);
+//     } catch (error) {
+//       console.error('❌ Error fetching PCB device:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Send command to PCB device
+//   app.post('/api/pcb/devices/:deviceId/command', async (req, res) => {
+//     try {
+//       const { deviceId } = req.params;
+//       const { command, parameters } = req.body;
+
+//       if (!command) {
+//         return res.status(400).json({ error: 'Command is required' });
+//       }
+
+//       const result = await pcbIntegration.handlePCBCommand(deviceId, command, parameters);
+//       res.json({ message: 'Command sent successfully', result });
+//     } catch (error) {
+//       console.error('❌ Error sending PCB command:', error);
+//       res.status(500).json({ error: error.message || 'Internal server error' });
+//     }
+//   });
+
+//   // Update PCB device status (called by PCB)
+//   app.post('/api/pcb/devices/:deviceId/status', async (req, res) => {
+//     try {
+//       const { deviceId } = req.params;
+//       const statusData = req.body;
+
+//       // Authenticate device
+//       const authHeader = req.headers.authorization;
+//       if (!authHeader) {
+//         return res.status(401).json({ error: 'Authorization required' });
+//       }
+
+//       const token = authHeader.replace('Bearer ', '');
+//       await pcbIntegration.verifyJWT(token);
+
+//       await pcbIntegration.updatePCBStatus(deviceId, statusData);
+//       res.json({ message: 'Status updated successfully' });
+//     } catch (error) {
+//       console.error('❌ Error updating PCB status:', error);
+//       res.status(error.message.includes('verification') ? 401 : 500)
+//          .json({ error: error.message || 'Internal server error' });
+//     }
+//   });
+
+//   // Refresh device credentials
+//   app.post('/api/pcb/devices/:deviceId/refresh-credentials', async (req, res) => {
+//     try {
+//       const { deviceId } = req.params;
+//       const newCredentials = await pcbIntegration.refreshDeviceCredentials(deviceId);
+      
+//       res.json({
+//         message: 'Credentials refreshed successfully',
+//         credentials: newCredentials,
+//         note: 'Please update your PCB with the new credentials immediately'
+//       });
+//     } catch (error) {
+//       console.error('❌ Error refreshing credentials:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Revoke PCB device
+//   app.delete('/api/pcb/devices/:deviceId', async (req, res) => {
+//     try {
+//       const { deviceId } = req.params;
+//       await pcbIntegration.revokePCBDevice(deviceId);
+      
+//       res.json({ message: 'Device revoked successfully' });
+//     } catch (error) {
+//       console.error('❌ Error revoking PCB device:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== EXTERNAL WEBSITE CREDENTIALS ENDPOINTS ==========
+  
+//   // Generate credentials for external website
+//   app.post('/api/external/generate-credentials', async (req, res) => {
+//     try {
+//       const websiteData = req.body;
+      
+//       // Validate required fields
+//       if (!websiteData.websiteName || !websiteData.websiteUrl || !websiteData.contactEmail) {
+//         return res.status(400).json({ 
+//           error: 'websiteName, websiteUrl, and contactEmail are required' 
+//         });
+//       }
+
+//       const credentials = await pcbIntegration.generateWebsiteCredentials(websiteData);
+      
+//       res.json({
+//         message: 'External website credentials generated successfully',
+//         credentials,
+//         documentation: {
+//           authentication: 'Use Bearer token in Authorization header',
+//           rateLimit: 'Check X-RateLimit headers in responses',
+//           webhooks: 'Configure webhook URL to receive real-time updates'
+//         }
+//       });
+//     } catch (error) {
+//       console.error('❌ Error generating website credentials:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // List external connections
+//   app.get('/api/external/connections', async (req, res) => {
+//     try {
+//       const connections = await pcbIntegration.externalConnections
+//         .find({ isActive: true })
+//         .project({
+//           connectionId: 1,
+//           websiteName: 1,
+//           websiteUrl: 1,
+//           permissions: 1,
+//           createdAt: 1,
+//           expiresAt: 1,
+//           rateLimit: 1
+//         })
+//         .sort({ createdAt: -1 })
+//         .toArray();
+
+//       res.json(connections);
+//     } catch (error) {
+//       console.error('❌ Error fetching external connections:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== EXTERNAL API ENDPOINTS ==========
+  
+//   // Middleware for external API authentication
+//   const authenticateExternalAPI = async (req, res, next) => {
+//     try {
+//       const authHeader = req.headers.authorization;
+//       const apiKey = req.headers['x-api-key'];
+      
+//       if (!authHeader && !apiKey) {
+//         return res.status(401).json({ error: 'Authentication required' });
+//       }
+
+//       if (authHeader) {
+//         const token = authHeader.replace('Bearer ', '');
+//         const { decoded } = await pcbIntegration.verifyJWT(token);
+//         req.user = decoded;
+//       } else if (apiKey) {
+//         const connection = await pcbIntegration.externalConnections.findOne({ 
+//           apiKey, 
+//           isActive: true 
+//         });
+//         if (!connection) {
+//           return res.status(401).json({ error: 'Invalid API key' });
+//         }
+//         req.user = connection;
+//       }
+
+//       next();
+//     } catch (error) {
+//       res.status(401).json({ error: 'Authentication failed' });
+//     }
+//   };
+
+//   // External API: Get charge points
+//   app.get('/api/external/charge-points', authenticateExternalAPI, async (req, res) => {
+//     try {
+//       const chargePoints = await ocppCMS.getAllChargePoints();
+//       const connectedPoints = ocppWebSocketServer.getConnectedChargePoints();
+      
+//       const response = chargePoints.map(cp => {
+//         const connected = connectedPoints.find(c => c.chargePointId === cp.chargePointId);
+//         return {
+//           chargePointId: cp.chargePointId,
+//           status: cp.status,
+//           isConnected: !!connected,
+//           connectors: cp.connectors?.length || 1,
+//           lastHeartbeat: connected?.lastHeartbeat || cp.lastHeartbeat
+//         };
+//       });
+
+//       res.json(response);
+//     } catch (error) {
+//       console.error('❌ External API error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // External API: Remote start
+//   app.post('/api/external/remote-start', authenticateExternalAPI, async (req, res) => {
+//     try {
+//       const { chargePointId, idTag, connectorId = 1 } = req.body;
+
+//       if (!chargePointId || !idTag) {
+//         return res.status(400).json({ error: 'chargePointId and idTag are required' });
+//       }
+
+//       const success = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+//       if (success) {
+//         res.json({ 
+//           message: 'Remote start initiated', 
+//           chargePointId, 
+//           status: 'accepted' 
+//         });
+//       } else {
+//         res.status(400).json({ 
+//           error: 'Remote start failed',
+//           chargePointId,
+//           status: 'rejected'
+//         });
+//       }
+//     } catch (error) {
+//       console.error('❌ External remote start error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // External API: Remote stop
+//   app.post('/api/external/remote-stop', authenticateExternalAPI, async (req, res) => {
+//     try {
+//       const { chargePointId, transactionId } = req.body;
+
+//       if (!chargePointId || !transactionId) {
+//         return res.status(400).json({ error: 'chargePointId and transactionId are required' });
+//       }
+
+//       const success = await ocppWebSocketServer.remoteStopTransaction(chargePointId, transactionId);
+      
+//       if (success) {
+//         res.json({ 
+//           message: 'Remote stop initiated', 
+//           chargePointId, 
+//           transactionId,
+//           status: 'accepted' 
+//         });
+//       } else {
+//         res.status(400).json({ 
+//           error: 'Remote stop failed',
+//           chargePointId,
+//           transactionId,
+//           status: 'rejected'
+//         });
+//       }
+//     } catch (error) {
+//       console.error('❌ External remote stop error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // External API: Get transactions
+//   app.get('/api/external/transactions', authenticateExternalAPI, async (req, res) => {
+//     try {
+//       const { chargePointId, status, limit = 50 } = req.query;
+      
+//       let query = {};
+//       if (chargePointId) query.chargePointId = chargePointId;
+//       if (status) query.status = status;
+
+//       const transactions = await db.collection('ocppTransactions')
+//         .find(query)
+//         .sort({ createdAt: -1 })
+//         .limit(parseInt(limit))
+//         .project({
+//           transactionId: 1,
+//           chargePointId: 1,
+//           connectorId: 1,
+//           status: 1,
+//           startTimestamp: 1,
+//           stopTimestamp: 1,
+//           energyDelivered: 1
+//         })
+//         .toArray();
+
+//       res.json(transactions);
+//     } catch (error) {
+//       console.error('❌ External transactions API error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== PCB AUTHENTICATION ENDPOINT =====
+  
+//   // PCB device authentication
+//   app.post('/api/pcb/authenticate', async (req, res) => {
+//     try {
+//       const { apiKey, deviceSecret } = req.body;
+      
+//       if (!apiKey) {
+//         return res.status(400).json({ error: 'API key is required' });
+//       }
+
+//       const device = await pcbIntegration.authenticatePCBDevice(apiKey, deviceSecret);
+//       const credentials = await pcbIntegration.generateConnectionCredentials(device.deviceId);
+      
+//       res.json({
+//         message: 'Authentication successful',
+//         deviceId: device.deviceId,
+//         connectionCredentials: credentials,
+//         serverTime: new Date().toISOString()
+//       });
+//     } catch (error) {
+//       console.error('❌ PCB authentication error:', error);
+//       res.status(401).json({ error: error.message });
+//     }
+//   });
+
+//   console.log('✅ PCB Integration API endpoints initialized');
+  
+//   // ... rest of your existing code ...
+// });
+
+// const app = express();
+// app.use(cors());
+// app.use(express.json());
+
+// // Global OCPP variables
+// let ocppWebSocketServer = null;
+// let ocppCMS = null;
+
+// // Custom fetch function using Node.js built-in https module (no external dependencies)
+// function customFetch(url, options = {}) {
+//   return new Promise((resolve, reject) => {
+//     const urlObj = new URL(url);
+//     const requestOptions = {
+//       hostname: urlObj.hostname,
+//       port: urlObj.port || 443,
+//       path: urlObj.pathname + urlObj.search,
+//       method: options.method || 'GET',
+//       headers: options.headers || {}
+//     };
+
+//     const req = https.request(requestOptions, (res) => {
+//       let data = '';
+//       res.on('data', (chunk) => data += chunk);
+//       res.on('end', () => {
+//         resolve({
+//           ok: res.statusCode >= 200 && res.statusCode < 300,
+//           status: res.statusCode,
+//           json: () => Promise.resolve(JSON.parse(data)),
+//           text: () => Promise.resolve(data)
+//         });
+//       });
+//     });
+
+//     req.on('error', reject);
+    
+//     if (options.body) {
+//       req.write(options.body);
+//     }
+    
+//     req.end();
+//   });
+// }
+
+// // After connecting to MongoDB, initialize OCPP server and all other services
+// connectDB().then((db) => {
+//   const chargers = db.collection('chargers');
+//   const orders = db.collection('orders');
+//   const chargingStatus = db.collection('chargingStatus');
+//   const ownerSessions = db.collection('ownerSessions');
+
+//   console.log("✅ Connected to MongoDB collections");
+
+//   // Initialize OCPP services
+//   ocppCMS = new OCPPCMSConfig(db);
+//   ocppWebSocketServer = new OCPPWebSocketServer(8080, db);
+  
+//   // Start OCPP WebSocket Server
+//   ocppWebSocketServer.initialize().then(() => {
+//     console.log('✅ OCPP WebSocket Server initialized');
+//   }).catch(error => {
+//     console.error('❌ Failed to initialize OCPP WebSocket Server:', error);
+//   });
+
+//   // Basic route
+//   app.get('/', (req, res) => res.send('🚀 EV Charging Backend Running!'));
+
+//   // ========== CMS CONFIGURATION ENDPOINTS ==========
+  
+//   // Get OCPP configuration
+//   app.get('/api/cms/config', async (req, res) => {
+//     try {
+//       const config = await ocppCMS.getConfig();
+//       res.json(config);
+//     } catch (error) {
+//       console.error('❌ Error fetching OCPP config:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Update OCPP configuration
+//   app.put('/api/cms/config', async (req, res) => {
+//     try {
+//       const configData = req.body;
+      
+//       // Validate WebSocket URL
+//       if (configData.websocketUrl && !ocppCMS.validateWebSocketUrl(configData.websocketUrl)) {
+//         return res.status(400).json({ error: 'Invalid WebSocket URL format' });
+//       }
+
+//       await ocppCMS.updateConfig(configData);
+      
+//       // If WebSocket URL changed, restart server
+//       if (configData.websocketUrl) {
+//         console.log('🔄 Restarting OCPP WebSocket Server with new configuration...');
+//         await ocppWebSocketServer.stop();
+//         ocppWebSocketServer = new OCPPWebSocketServer(8080, db);
+//         await ocppWebSocketServer.initialize();
+//       }
+
+//       res.json({ message: 'Configuration updated successfully' });
+//     } catch (error) {
+//       console.error('❌ Error updating OCPP config:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== CHARGE POINT MANAGEMENT ENDPOINTS ==========
+  
+//   // Get all charge points (CMS view)
+//   app.get('/api/cms/charge-points', async (req, res) => {
+//     try {
+//       const chargePoints = await ocppCMS.getAllChargePoints();
+//       const connectedPoints = ocppWebSocketServer.getConnectedChargePoints();
+      
+//       // Merge connected status
+//       const mergedData = chargePoints.map(cp => {
+//         const connected = connectedPoints.find(c => c.chargePointId === cp.chargePointId);
+//         return {
+//           ...cp,
+//           isConnected: !!connected,
+//           lastHeartbeat: connected?.lastHeartbeat || cp.lastHeartbeat
+//         };
+//       });
+
+//       res.json(mergedData);
+//     } catch (error) {
+//       console.error('❌ Error fetching charge points:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get specific charge point details
+//   app.get('/api/cms/charge-points/:id', async (req, res) => {
+//     try {
+//       const { id } = req.params;
+//       const chargePoint = await ocppWebSocketServer.getChargePointStatus(id);
+      
+//       if (!chargePoint) {
+//         return res.status(404).json({ error: 'Charge point not found' });
+//       }
+
+//       res.json(chargePoint);
+//     } catch (error) {
+//       console.error('❌ Error fetching charge point:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Register new charge point
+//   app.post('/api/cms/charge-points', async (req, res) => {
+//     try {
+//       const chargePointData = req.body;
+      
+//       if (!chargePointData.chargePointId) {
+//         return res.status(400).json({ error: 'Charge Point ID is required' });
+//       }
+
+//       // Check if charge point already exists
+//       const existing = await ocppCMS.getChargePoint(chargePointData.chargePointId);
+//       if (existing) {
+//         return res.status(400).json({ error: 'Charge point already exists' });
+//       }
+
+//       const result = await ocppCMS.registerChargePoint(chargePointData);
+//       res.json({ message: 'Charge point registered successfully', id: result.insertedId });
+//     } catch (error) {
+//       console.error('❌ Error registering charge point:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Generate charge point configuration
+//   app.get('/api/cms/charge-points/:id/config', async (req, res) => {
+//     try {
+//       const { id } = req.params;
+//       const config = await ocppCMS.generateChargePointConfig(id);
+//       res.json(config);
+//     } catch (error) {
+//       console.error('❌ Error generating charge point config:', error);
+//       res.status(404).json({ error: 'Charge point not found' });
+//     }
+//   });
+
+//   // ========== REMOTE CONTROL ENDPOINTS ==========
+  
+//   // Remote start transaction
+//   app.post('/api/cms/remote-start/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { idTag, connectorId = 1 } = req.body;
+
+//       if (!idTag) {
+//         return res.status(400).json({ error: 'idTag is required' });
+//       }
+
+//       const success = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+//       if (success) {
+//         res.json({ message: 'Remote start command sent successfully', status: 'accepted' });
+//       } else {
+//         res.status(400).json({ error: 'Remote start command failed or was rejected' });
+//       }
+//     } catch (error) {
+//       console.error('❌ Remote start error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Remote stop transaction
+//   app.post('/api/cms/remote-stop/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { transactionId } = req.body;
+
+//       if (!transactionId) {
+//         return res.status(400).json({ error: 'Transaction ID is required' });
+//       }
+
+//       const success = await ocppWebSocketServer.remoteStopTransaction(chargePointId, transactionId);
+      
+//       if (success) {
+//         res.json({ message: 'Remote stop command sent successfully', status: 'accepted' });
+//       } else {
+//         res.status(400).json({ error: 'Remote stop command failed or was rejected' });
+//       }
+//     } catch (error) {
+//       console.error('❌ Remote stop error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Unlock connector
+//   app.post('/api/cms/unlock/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { connectorId = 1 } = req.body;
+
+//       const success = await ocppWebSocketServer.unlockConnector(chargePointId, connectorId);
+      
+//       if (success) {
+//         res.json({ message: 'Unlock command sent successfully', status: 'unlocked' });
+//       } else {
+//         res.status(400).json({ error: 'Unlock command failed or connector was not unlocked' });
+//       }
+//     } catch (error) {
+//       console.error('❌ Unlock error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Reset charge point
+//   app.post('/api/cms/reset/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { type = 'Soft' } = req.body;
+
+//       if (!['Soft', 'Hard'].includes(type)) {
+//         return res.status(400).json({ error: 'Reset type must be "Soft" or "Hard"' });
+//       }
+
+//       const success = await ocppWebSocketServer.resetChargePoint(chargePointId, type);
+      
+//       if (success) {
+//         res.json({ message: `${type} reset command sent successfully`, status: 'accepted' });
+//       } else {
+//         res.status(400).json({ error: 'Reset command failed or was rejected' });
+//       }
+//     } catch (error) {
+//       console.error('❌ Reset error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== TRANSACTION MANAGEMENT ENDPOINTS ==========
+  
+//   // Get all transactions
+//   app.get('/api/cms/transactions', async (req, res) => {
+//     try {
+//       const { status, chargePointId, limit = 100 } = req.query;
+      
+//       let query = {};
+//       if (status) query.status = status;
+//       if (chargePointId) query.chargePointId = chargePointId;
+
+//       const transactions = await db.collection('ocppTransactions')
+//         .find(query)
+//         .sort({ createdAt: -1 })
+//         .limit(parseInt(limit))
+//         .toArray();
+
+//       res.json(transactions);
+//     } catch (error) {
+//       console.error('❌ Error fetching transactions:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get active transactions
+//   app.get('/api/cms/transactions/active', async (req, res) => {
+//     try {
+//       const activeTransactions = await ocppCMS.getActiveTransactions();
+//       res.json(activeTransactions);
+//     } catch (error) {
+//       console.error('❌ Error fetching active transactions:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get transaction by ID
+//   app.get('/api/cms/transactions/:id', async (req, res) => {
+//     try {
+//       const { id } = req.params;
+//       const transaction = await ocppCMS.getTransaction(parseInt(id));
+      
+//       if (!transaction) {
+//         return res.status(404).json({ error: 'Transaction not found' });
+//       }
+
+//       res.json(transaction);
+//     } catch (error) {
+//       console.error('❌ Error fetching transaction:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== METER VALUES ENDPOINTS ==========
+  
+//   // Get meter values
+//   app.get('/api/cms/meter-values', async (req, res) => {
+//     try {
+//       const { chargePointId, transactionId, limit = 100 } = req.query;
+      
+//       let query = {};
+//       if (chargePointId) query.chargePointId = chargePointId;
+//       if (transactionId) query.transactionId = parseInt(transactionId);
+
+//       const meterValues = await db.collection('ocppMeterValues')
+//         .find(query)
+//         .sort({ timestamp: -1 })
+//         .limit(parseInt(limit))
+//         .toArray();
+
+//       res.json(meterValues);
+//     } catch (error) {
+//       console.error('❌ Error fetching meter values:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get meter values for specific charge point
+//   app.get('/api/cms/meter-values/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { limit = 100, from, to } = req.query;
+      
+//       let query = { chargePointId };
+      
+//       if (from || to) {
+//         query.timestamp = {};
+//         if (from) query.timestamp.$gte = new Date(from);
+//         if (to) query.timestamp.$lte = new Date(to);
+//       }
+
+//       const meterValues = await db.collection('ocppMeterValues')
+//         .find(query)
+//         .sort({ timestamp: -1 })
+//         .limit(parseInt(limit))
+//         .toArray();
+
+//       res.json(meterValues);
+//     } catch (error) {
+//       console.error('❌ Error fetching meter values:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== LOGGING ENDPOINTS ==========
+  
+//   // Get OCPP logs
+//   app.get('/api/cms/logs', async (req, res) => {
+//     try {
+//       const { chargePointId, limit = 100 } = req.query;
+//       const logs = await ocppCMS.getLogs(chargePointId, parseInt(limit));
+//       res.json(logs);
+//     } catch (error) {
+//       console.error('❌ Error fetching logs:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get logs for specific charge point
+//   app.get('/api/cms/logs/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { limit = 100 } = req.query;
+//       const logs = await ocppCMS.getLogs(chargePointId, parseInt(limit));
+//       res.json(logs);
+//     } catch (error) {
+//       console.error('❌ Error fetching charge point logs:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== WEBSOCKET STATUS ENDPOINT ==========
+  
+//   // Get WebSocket server status
+//   app.get('/api/cms/websocket/status', (req, res) => {
+//     try {
+//       const connectedChargePoints = ocppWebSocketServer.getConnectedChargePoints();
+      
+//       res.json({
+//         isRunning: !!ocppWebSocketServer,
+//         port: 8080,
+//         connectedChargePoints: connectedChargePoints.length,
+//         chargePoints: connectedChargePoints
+//       });
+//     } catch (error) {
+//       console.error('❌ Error getting WebSocket status:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Restart WebSocket server
+//   app.post('/api/cms/websocket/restart', async (req, res) => {
+//     try {
+//       console.log('🔄 Restarting OCPP WebSocket Server...');
+      
+//       await ocppWebSocketServer.stop();
+//       ocppWebSocketServer = new OCPPWebSocketServer(8080, db);
+//       await ocppWebSocketServer.initialize();
+      
+//       res.json({ message: 'WebSocket server restarted successfully' });
+//     } catch (error) {
+//       console.error('❌ Error restarting WebSocket server:', error);
+//       res.status(500).json({ error: 'Failed to restart WebSocket server' });
+//     }
+//   });
+
+//   // ========== CHARGER MANAGEMENT ENDPOINTS ==========
+//   app.get('/api/chargers', async (req, res) => {
+//     try {
+//       console.log("📤 GET /api/chargers - Fetching available chargers");
+      
+//       // Get all chargers (no reservation filtering)
+//       const allChargers = await chargers.find({}).toArray();
+
+//       console.log(`✅ Found ${allChargers.length} chargers`);
+//       res.json(allChargers);
+//     } catch (err) {
+//       console.error('❌ Error fetching chargers:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // ========== ORDER MANAGEMENT ENDPOINTS ==========
+//   // Save order (simplified without reservations)
+//   app.post('/api/save-order', async (req, res) => {
+//     try {
+//       const { charger, firstName, lastName, email, phone, timestamp } = req.body;
+
+//       if (!charger?.chargerId || !firstName || !lastName || !email || !phone) {
+//         return res.status(400).json({ error: "Missing required information" });
+//       }
+
+//       const chargerDoc = await chargers.findOne({ chargerId: charger.chargerId });
+//       if (!chargerDoc) {
+//         return res.status(400).json({ error: "Charger not found" });
+//       }
+
+//       const orderData = {
+//         charger,
+//         firstName: firstName.trim(),
+//         lastName: lastName.trim(),
+//         email: email.trim(),
+//         phone: phone.trim(),
+//         timestamp: timestamp || new Date().toISOString(),
+//         paid: false,
+//         paymentStatus: 'pending',
+//         chargingStarted: false,
+//         chargingCompleted: false,
+//         createdAt: new Date(),
+//         status: 'pending'
+//       };
+
+//       const result = await orders.insertOne(orderData);
+//       console.log(`✅ Order saved with ID: ${result.insertedId}, Status: pending`);
+//       res.status(200).json({ message: "Order saved", id: result.insertedId });
+//     } catch (err) {
+//       console.error('❌ Error saving order:', err);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   app.get('/api/get-order/:id', async (req, res) => {
+//     try {
+//       const id = req.params.id;
+//       if (!ObjectId.isValid(id)) {
+//         console.error(`❌ Invalid order ID format: ${id}`);
+//         return res.status(400).json({ error: "Invalid ID" });
+//       }
+
+//       const order = await orders.findOne({ _id: new ObjectId(id) });
+//       if (!order) {
+//         console.error(`❌ Order not found: ${id}`);
+//         return res.status(404).json({ error: "Order not found" });
+//       }
+
+//       console.log(`✅ Order retrieved: ${id}`, {
+//         status: order.status,
+//         paid: order.paid,
+//         paymentStatus: order.paymentStatus,
+//         molliePaymentId: order.molliePaymentId,
+//         paidAt: order.paidAt
+//       });
+
+//       res.json(order);
+//     } catch (err) {
+//       console.error('❌ Error fetching order:', err);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // Initiate refund endpoint
+//   app.post('/api/initiate-refund', async (req, res) => {
+//     try {
+//       const { orderId } = req.body;
+
+//       if (!orderId || !ObjectId.isValid(orderId)) {
+//         return res.status(400).json({ error: "Valid Order ID is required" });
+//       }
+
+//       // Get order details
+//       const order = await orders.findOne({ _id: new ObjectId(orderId) });
+//       if (!order) {
+//         return res.status(404).json({ error: "Order not found" });
+//       }
+
+//       // Mark order for refund
+//       await orders.updateOne(
+//         { _id: new ObjectId(orderId) },
+//         { 
+//           $set: { 
+//             refundRequested: true,
+//             refundRequestedAt: new Date(),
+//             status: 'refund_requested',
+//             updatedAt: new Date()
+//           } 
+//         }
+//       );
+
+//       console.log(`✅ Refund initiated for order ${orderId}, payment ID: ${order.molliePaymentId || order.paymentId}`);
+      
+//       res.json({ 
+//         message: "Refund initiated", 
+//         orderId,
+//         paymentId: order.molliePaymentId || order.paymentId
+//       });
+
+//     } catch (error) {
+//       console.error('❌ Error initiating refund:', error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // ========== PAYMENT ENDPOINTS ==========
+//   // Payment creation notification from frontend
+//   app.post('/api/payment-created', async (req, res) => {
+//     try {
+//       const { orderId, molliePaymentId, paymentStatus, amount, customerInfo, timestamp } = req.body;
+      
+//       if (!orderId || !ObjectId.isValid(orderId)) {
+//         return res.status(400).json({ error: "Invalid order ID" });
+//       }
+
+//       const updateData = {
+//         molliePaymentId,
+//         paymentStatus: paymentStatus || 'open',
+//         paymentAmount: amount,
+//         paymentCreatedAt: new Date(timestamp),
+//         updatedAt: new Date()
+//       };
+
+//       await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+//       console.log(`✅ Payment creation recorded for order: ${orderId}, Mollie ID: ${molliePaymentId}`);
+      
+//       res.json({ message: "Payment creation recorded" });
+//     } catch (err) {
+//       console.error('❌ Error recording payment creation:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // Generic payment webhook (for manual updates)
+//   app.post('/api/payment-webhook', async (req, res) => {
+//     try {
+//       const { orderId, paymentStatus, paymentId, paymentMethod } = req.body;
+//       if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid order ID" });
+
+//       const updateData = {
+//         paid: paymentStatus === 'paid',
+//         paymentStatus,
+//         paymentId,
+//         paymentMethod,
+//         paidAt: paymentStatus === 'paid' ? new Date() : null,
+//         status: paymentStatus === 'paid' ? 'paid' : (paymentStatus === 'failed' || paymentStatus === 'cancelled' ? paymentStatus : 'pending'),
+//         updatedAt: new Date()
+//       };
+
+//       await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+//       console.log(`✅ Payment webhook updated order: ${orderId}, Status: ${paymentStatus}`);
+//       res.json({ message: "Webhook updated" });
+//     } catch (err) {
+//       console.error('❌ Error processing payment webhook:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // Mollie webhook - simplified without reservations
+//   app.post('/api/mollie-webhook', async (req, res) => {
+//     try {
+//       const { id: paymentId } = req.body;
+      
+//       if (!paymentId) {
+//         console.error("❌ Mollie webhook: Missing payment ID");
+//         return res.status(400).json({ error: "Missing payment ID" });
+//       }
+
+//       console.log(`📥 Mollie webhook received for payment: ${paymentId}`);
+
+//       const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+
+//       // Fetch payment details from Mollie
+//       const response = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+//         headers: {
+//           "Authorization": `Bearer ${MOLLIE_API_KEY}`,
+//           "Content-Type": "application/json"
+//         }
+//       });
+
+//       if (!response.ok) {
+//         console.error(`❌ Failed to fetch payment from Mollie: ${response.status}`);
+//         return res.status(400).json({ error: "Failed to fetch payment data" });
+//       }
+
+//       const paymentData = await response.json();
+//       console.log(`📋 Mollie payment data:`, {
+//         id: paymentData.id,
+//         status: paymentData.status,
+//         method: paymentData.method,
+//         amount: paymentData.amount,
+//         metadata: paymentData.metadata
+//       });
+
+//       // Update order with payment information
+//       if (paymentData?.metadata?.orderId) {
+//         const orderId = paymentData.metadata.orderId;
+
+//         const updateData = {
+//           paid: paymentData.status === 'paid',
+//           paymentStatus: paymentData.status,
+//           paymentId,
+//           paymentMethod: paymentData.method,
+//           paidAt: paymentData.status === 'paid' && paymentData.paidAt ? new Date(paymentData.paidAt) : null,
+//           status: paymentData.status === 'paid' ? 'paid' : 
+//                  (paymentData.status === 'failed' || paymentData.status === 'cancelled' || paymentData.status === 'expired') ? paymentData.status : 'pending',
+//           mollieWebhookAt: new Date(),
+//           updatedAt: new Date()
+//         };
+
+//         const result = await orders.updateOne(
+//           { _id: new ObjectId(orderId) },
+//           { $set: updateData }
+//         );
+
+//         if (result.matchedCount > 0) {
+//           console.log(`✅ Order ${orderId} updated with payment status: ${paymentData.status}`, {
+//             paid: updateData.paid,
+//             paymentStatus: updateData.paymentStatus,
+//             status: updateData.status
+//           });
+//         } else {
+//           console.error(`❌ Order ${orderId} not found for payment update`);
+//         }
+//       } else {
+//         console.error("❌ No order ID found in payment metadata");
+//       }
+
+//       res.status(200).send("OK");
+//     } catch (err) {
+//       console.error("❌ Mollie webhook processing failed:", err);
+//       res.status(500).json({ error: "Webhook processing failed" });
+//     }
+//   });
+
+//   // Direct Mollie payment verification endpoint
+//   app.get('/api/verify-mollie-payment/:paymentId', async (req, res) => {
+//     try {
+//       const { paymentId } = req.params;
+      
+//       console.log("🔍 Direct Mollie verification requested for payment:", paymentId);
+      
+//       if (!paymentId) {
+//         return res.status(400).json({ 
+//           success: false, 
+//           error: 'Payment ID is required' 
+//         });
+//       }
+      
+//       const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+      
+//       // Verify payment directly with Mollie API
+//       const mollieResponse = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+//         method: 'GET',
+//         headers: {
+//           'Authorization': `Bearer ${MOLLIE_API_KEY}`,
+//           'Content-Type': 'application/json'
+//         }
+//       });
+      
+//       if (!mollieResponse.ok) {
+//         console.error("❌ Mollie API error:", mollieResponse.status);
+//         const errorText = await mollieResponse.text();
+//         return res.status(mollieResponse.status).json({ 
+//           success: false, 
+//           error: `Mollie API error: ${errorText}` 
+//         });
+//       }
+      
+//       const paymentData = await mollieResponse.json();
+//       console.log("📋 Mollie payment data:", {
+//         id: paymentData.id,
+//         status: paymentData.status,
+//         amount: paymentData.amount
+//       });
+      
+//       const isPaid = paymentData.status === 'paid';
+      
+//       // If payment is confirmed as paid, update our database
+//       if (isPaid && paymentData.metadata && paymentData.metadata.orderId) {
+//         try {
+//           console.log("✅ Payment confirmed paid, updating database...");
+          
+//           const updateData = {
+//             paid: true,
+//             paymentStatus: 'paid',
+//             status: 'paid',
+//             paidAt: paymentData.paidAt ? new Date(paymentData.paidAt) : new Date(),
+//             mollieDirectVerifiedAt: new Date(),
+//             updatedAt: new Date()
+//           };
+          
+//           const updateResult = await orders.updateOne(
+//             { _id: new ObjectId(paymentData.metadata.orderId) },
+//             { $set: updateData }
+//           );
+          
+//           console.log("📋 Database update result:", {
+//             matchedCount: updateResult.matchedCount,
+//             modifiedCount: updateResult.modifiedCount
+//           });
+          
+//         } catch (dbError) {
+//           console.error("❌ Failed to update database:", dbError);
+//           // Don't fail the verification if DB update fails
+//         }
+//       }
+      
+//       res.json({
+//         success: true,
+//         payment: {
+//           id: paymentData.id,
+//           status: paymentData.status,
+//           amount: paymentData.amount,
+//           description: paymentData.description,
+//           createdAt: paymentData.createdAt,
+//           paidAt: paymentData.paidAt
+//         },
+//         isPaid: isPaid,
+//         status: paymentData.status
+//       });
+      
+//     } catch (error) {
+//       console.error("❌ Direct Mollie verification error:", error);
+//       res.status(500).json({ 
+//         success: false, 
+//         error: 'Internal server error during payment verification' 
+//       });
+//     }
+//   });
+
+//   // Manual payment status update endpoint (for testing/debugging)
+//   app.post('/api/update-payment-status/:orderId', async (req, res) => {
+//     try {
+//       const orderId = req.params.orderId;
+//       const { paymentStatus, paid } = req.body;
+      
+//       if (!ObjectId.isValid(orderId)) {
+//         return res.status(400).json({ error: "Invalid order ID" });
+//       }
+      
+//       const updateData = {
+//         paid: paid === true || paymentStatus === 'paid',
+//         paymentStatus: paymentStatus || 'paid',
+//         status: paymentStatus === 'paid' ? 'paid' : paymentStatus,
+//         paidAt: (paid === true || paymentStatus === 'paid') ? new Date() : null,
+//         manuallyUpdatedAt: new Date(),
+//         updatedAt: new Date()
+//       };
+      
+//       const result = await orders.updateOne(
+//         { _id: new ObjectId(orderId) },
+//         { $set: updateData }
+//       );
+      
+//       if (result.matchedCount === 0) {
+//         return res.status(404).json({ error: "Order not found" });
+//       }
+      
+//       console.log(`✅ Manual payment status update for order: ${orderId}`, updateData);
+//       res.json({ message: "Payment status updated", updateData });
+      
+//     } catch (error) {
+//       console.error("❌ Error updating payment status:", error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   // ========== CHARGING CONTROL ENDPOINTS ==========
+//   // Enhanced start charging with OCPP support
+//   app.post('/api/start-charging/:id', async (req, res) => {
+//     try {
+//       const id = req.params.id;
+//       if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid order ID" });
+
+//       // Check if order exists and payment is confirmed
+//       const order = await orders.findOne({ _id: new ObjectId(id) });
+//       if (!order) {
+//         console.error(`❌ Order not found for charging start: ${id}`);
+//         return res.status(404).json({ error: "Order not found" });
+//       }
+
+//       // Enhanced payment check
+//       const isPaymentConfirmed = order.paid === true || 
+//                                 order.paymentStatus === 'paid' || 
+//                                 order.status === 'paid';
+
+//       if (!isPaymentConfirmed) {
+//         console.error(`❌ Charging start denied - Payment not confirmed. Order: ${id}`);
+//         return res.status(400).json({ 
+//           error: "Payment not confirmed", 
+//           currentStatus: order.paymentStatus || order.status,
+//           paid: order.paid
+//         });
+//       }
+
+//       // Try OCPP remote start if charge point is connected
+//       let ocppStarted = false;
+//       if (order.charger && order.charger.chargerId) {
+//         try {
+//           const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
+//           if (chargePointStatus && chargePointStatus.isConnected) {
+//             console.log('🔌 Attempting OCPP remote start...');
+//             ocppStarted = await ocppWebSocketServer.remoteStartTransaction(
+//               order.charger.chargerId, 
+//               id, // Use order ID as authorization tag
+//               1   // Connector ID
+//             );
+//             console.log(`${ocppStarted ? '✅' : '❌'} OCPP remote start ${ocppStarted ? 'successful' : 'failed'}`);
+//           } else {
+//             console.log('⚠️ Charge point not connected via OCPP, proceeding with manual start');
+//           }
+//         } catch (ocppError) {
+//           console.error('❌ OCPP remote start error:', ocppError);
+//         }
+//       }
+
+//       // Update order to mark charging as started
+//       await orders.updateOne(
+//         { _id: new ObjectId(id) },
+//         {
+//           $set: {
+//             chargingStarted: true,
+//             chargingStartedAt: new Date(),
+//             status: 'charging',
+//             ocppControlled: ocppStarted,
+//             updatedAt: new Date()
+//           }
+//         }
+//       );
+
+//       console.log(`✅ Charging started for order: ${id} (OCPP: ${ocppStarted ? 'Yes' : 'No'})`);
+//       res.json({ 
+//         message: "Charging started", 
+//         orderId: id,
+//         ocppControlled: ocppStarted
+//       });
+//     } catch (err) {
+//       console.error('❌ Error starting charging:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   app.post('/api/charging-status', async (req, res) => {
+//     try {
+//       const { orderId, startTime, endTime, durationSeconds, amountPaid, powerKW } = req.body;
+//       if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid data" });
+
+//       const order = await orders.findOne({ _id: new ObjectId(orderId) });
+//       if (!order) return res.status(404).json({ error: "Order not found" });
+
+//       const chargingData = {
+//         orderId: new ObjectId(orderId),
+//         startTime: new Date(startTime),
+//         endTime: endTime ? new Date(endTime) : new Date(),
+//         durationSeconds,
+//         amountPaid: parseFloat(amountPaid) || 0,
+//         powerKW: parseFloat(powerKW) || 0,
+//         userPhone: order.phone,
+//         userEmail: order.email,
+//         userName: `${order.firstName} ${order.lastName}`,
+//         charger: order.charger,
+//         createdAt: new Date()
+//       };
+
+//       const result = await chargingStatus.insertOne(chargingData);
+
+//       await orders.updateOne(
+//         { _id: new ObjectId(orderId) },
+//         {
+//           $set: {
+//             chargingCompleted: true,
+//             chargingCompletedAt: new Date(),
+//             status: 'completed',
+//             finalAmount: parseFloat(amountPaid) || 0,
+//             updatedAt: new Date()
+//           }
+//         }
+//       );
+
+//       console.log(`✅ Charging session completed for order: ${orderId}`);
+//       res.status(200).json({ message: "Charging session saved", id: result.insertedId });
+//     } catch (err) {
+//       console.error('❌ Error saving charging session:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // ========== OWNER SESSION ENDPOINTS ==========
+//   app.post('/api/create-owner-session', async (req, res) => {
+//     try {
+//       const { charger, isOwner, timestamp } = req.body;
+      
+//       const ownerSession = {
+//         charger,
+//         isOwner: true,
+//         timestamp: timestamp || new Date().toISOString(),
+//         sessionType: 'owner',
+//         paid: true,
+//         paymentStatus: 'owner_session',
+//         createdAt: new Date(),
+//         status: 'active'
+//       };
+      
+//       const result = await ownerSessions.insertOne(ownerSession);
+//       console.log(`✅ Owner session created: ${result.insertedId}`);
+      
+//       res.json({ 
+//         message: "Owner session created", 
+//         sessionId: result.insertedId,
+//         session: ownerSession 
+//       });
+//     } catch (error) {
+//       console.error('❌ Error creating owner session:', error);
+//       res.status(500).json({ error: "Failed to create owner session" });
+//     }
+//   });
+
+//   app.get('/api/get-owner-session/:id', async (req, res) => {
+//     try {
+//       const id = req.params.id;
+//       if (!ObjectId.isValid(id)) {
+//         return res.status(400).json({ error: "Invalid session ID" });
+//       }
+      
+//       const ownerSession = await ownerSessions.findOne({ _id: new ObjectId(id) });
+//       if (!ownerSession) {
+//         return res.status(404).json({ error: "Owner session not found" });
+//       }
+      
+//       res.json(ownerSession);
+//     } catch (error) {
+//       console.error('❌ Error fetching owner session:', error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   });
+
+//   app.post('/api/start-owner-charging/:id', async (req, res) => {
+//     try {
+//       const id = req.params.id;
+//       if (!ObjectId.isValid(id)) {
+//         return res.status(400).json({ error: "Invalid session ID" });
+//       }
+      
+//       const updateResult = await ownerSessions.updateOne(
+//         { _id: new ObjectId(id) },
+//         {
+//           $set: {
+//             chargingStarted: true,
+//             chargingStartedAt: new Date(),
+//             status: 'charging',
+//             updatedAt: new Date()
+//           }
+//         }
+//       );
+      
+//       if (updateResult.matchedCount === 0) {
+//         return res.status(404).json({ error: "Owner session not found" });
+//       }
+      
+//       console.log(`✅ Owner charging started for session: ${id}`);
+//       res.json({ message: "Owner charging started", sessionId: id });
+//     } catch (error) {
+//       console.error('❌ Error starting owner charging:', error);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   app.post('/api/owner-charging-status', async (req, res) => {
+//     try {
+//       const { sessionId, startTime, endTime, durationSeconds, amountPaid, powerKW, userInfo } = req.body;
+      
+//       const chargingData = {
+//         sessionId: sessionId ? new ObjectId(sessionId) : null,
+//         sessionType: 'owner',
+//         startTime: new Date(startTime),
+//         endTime: endTime ? new Date(endTime) : new Date(),
+//         durationSeconds,
+//         amountPaid: 0, // Owner sessions are free
+//         powerKW: parseFloat(powerKW) || 0,
+//         isOwner: true,
+//         createdAt: new Date()
+//       };
+      
+//       const result = await chargingStatus.insertOne(chargingData);
+      
+//       // Update owner session
+//       if (sessionId && ObjectId.isValid(sessionId)) {
+//         await ownerSessions.updateOne(
+//           { _id: new ObjectId(sessionId) },
+//           {
+//             $set: {
+//               chargingCompleted: true,
+//               chargingCompletedAt: new Date(),
+//               status: 'completed',
+//               updatedAt: new Date()
+//             }
+//           }
+//         );
+//       }
+      
+//       console.log(`✅ Owner charging session completed: ${sessionId}`);
+//       res.json({ message: "Owner charging session saved", id: result.insertedId });
+//     } catch (error) {
+//       console.error('❌ Error saving owner charging session:', error);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // ========== DASHBOARD/STATISTICS ENDPOINTS ==========
+  
+//   // Get CMS dashboard data
+//   app.get('/api/cms/dashboard', async (req, res) => {
+//     try {
+//       const totalChargePoints = await db.collection('chargePoints').countDocuments();
+//       const connectedChargePoints = ocppWebSocketServer.getConnectedChargePoints().length;
+//       const activeTransactions = await db.collection('ocppTransactions').countDocuments({ status: 'active' });
+//       const totalTransactions = await db.collection('ocppTransactions').countDocuments();
+//       const totalOrders = await orders.countDocuments();
+//       const paidOrders = await orders.countDocuments({ paid: true });
+
+//       // Get recent transactions
+//       const recentTransactions = await db.collection('ocppTransactions')
+//         .find({})
+//         .sort({ createdAt: -1 })
+//         .limit(5)
+//         .toArray();
+
+//       // Get charge point statuses
+//       const chargePointStatuses = await db.collection('chargePoints')
+//         .aggregate([
+//           { $group: { _id: '$status', count: { $sum: 1 } } }
+//         ])
+//         .toArray();
+
+//       res.json({
+//         statistics: {
+//           totalChargePoints,
+//           connectedChargePoints,
+//           activeTransactions,
+//           totalTransactions,
+//           totalOrders,
+//           paidOrders,
+//           connectionRate: totalChargePoints > 0 ? (connectedChargePoints / totalChargePoints * 100).toFixed(1) : 0
+//         },
+//         recentTransactions,
+//         chargePointStatuses,
+//         lastUpdated: new Date()
+//       });
+//     } catch (error) {
+//       console.error('❌ Error fetching dashboard data:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // ========== ADMIN ENDPOINTS ==========
+//   app.get('/api/orders', async (req, res) => {
+//     try {
+//       const allOrders = await orders.find({}).sort({ createdAt: -1 }).toArray();
+//       res.json(allOrders);
+//     } catch (err) {
+//       console.error('❌ Error fetching orders:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   app.get('/api/charging-sessions', async (req, res) => {
+//     try {
+//       const sessions = await chargingStatus.find({}).sort({ createdAt: -1 }).toArray();
+//       res.json(sessions);
+//     } catch (err) {
+//       console.error('❌ Error fetching charging sessions:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   app.get('/api/charging-sessions/:orderId', async (req, res) => {
+//     try {
+//       const orderId = req.params.orderId;
+//       if (!ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid ID" });
+
+//       const sessions = await chargingStatus.find({ orderId: new ObjectId(orderId) }).toArray();
+//       res.json(sessions);
+//     } catch (err) {
+//       console.error('❌ Error fetching charging sessions for order:', err);
+//       res.status(500).json({ error: "Internal error" });
+//     }
+//   });
+
+//   // ========== OCPP API ENDPOINTS ==========
+//   app.get('/api/ocpp/charge-points', (req, res) => {
+//     const connectedChargePoints = ocppWebSocketServer.getConnectedChargePoints();
+//     res.json({ chargePoints: connectedChargePoints });
+//   });
+
+//   app.get('/api/ocpp/status/:chargePointId', (req, res) => {
+//     const { chargePointId } = req.params;
+//     const status = ocppWebSocketServer.getChargePointStatus(chargePointId);
+    
+//     if (!status) {
+//       return res.status(404).json({ error: 'Charge point not connected' });
+//     }
+    
+//     res.json(status);
+//   });
+
+//   app.get('/api/ocpp/status', (req, res) => {
+//     const allStatuses = ocppWebSocketServer.getAllChargePointStatuses();
+//     res.json(allStatuses);
+//   });
+
+//   // Remote control endpoints
+//   app.post('/api/ocpp/remote-start/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { idTag, connectorId } = req.body;
+
+//       if (!idTag) {
+//         return res.status(400).json({ error: 'idTag is required' });
+//       }
+
+//       const messageId = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+//       if (!messageId) {
+//         return res.status(400).json({ error: 'Charge point not connected' });
+//       }
+
+//       res.json({ message: 'Remote start command sent', messageId });
+//     } catch (error) {
+//       console.error('❌ Remote start error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   app.post('/api/ocpp/remote-stop/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { transactionId } = req.body;
+
+//       if (!transactionId) {
+//         return res.status(400).json({ error: 'transactionId is required' });
+//       }
+
+//       const messageId = await ocppWebSocketServer.remoteStopTransaction(chargePointId, transactionId);
+      
+//       if (!messageId) {
+//         return res.status(400).json({ error: 'Charge point not connected' });
+//       }
+
+//       res.json({ message: 'Remote stop command sent', messageId });
+//     } catch (error) {
+//       console.error('❌ Remote stop error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+//   // ========== ENHANCED CHARGING CONTROL ENDPOINTS ==========
+// // Add these modifications to your server.js file
+
+// // Enhanced start charging with ESP device messaging
+// app.post('/api/start-charging/:id', async (req, res) => {
+//   try {
+//     const id = req.params.id;
+//     if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid order ID" });
+
+//     // Check if order exists and payment is confirmed
+//     const order = await orders.findOne({ _id: new ObjectId(id) });
+//     if (!order) {
+//       console.error(`❌ Order not found for charging start: ${id}`);
+//       return res.status(404).json({ error: "Order not found" });
+//     }
+
+//     // Enhanced payment check
+//     const isPaymentConfirmed = order.paid === true || 
+//                               order.paymentStatus === 'paid' || 
+//                               order.status === 'paid';
+
+//     if (!isPaymentConfirmed) {
+//       console.error(`❌ Charging start denied - Payment not confirmed. Order: ${id}`);
+//       return res.status(400).json({ 
+//         error: "Payment not confirmed", 
+//         currentStatus: order.paymentStatus || order.status,
+//         paid: order.paid
+//       });
+//     }
+
+//     // Try OCPP remote start if charge point is connected
+//     let ocppStarted = false;
+//     let espNotified = false;
+    
+//     if (order.charger && order.charger.chargerId) {
+//       try {
+//         const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
+//         if (chargePointStatus && chargePointStatus.isConnected) {
+//           console.log('🔌 Attempting OCPP remote start...');
+          
+//           // Send remote start command to ESP device
+//           ocppStarted = await ocppWebSocketServer.remoteStartTransaction(
+//             order.charger.chargerId, 
+//             id, // Use order ID as authorization tag
+//             1   // Connector ID
+//           );
+          
+//           if (ocppStarted) {
+//             console.log('✅ OCPP remote start successful');
+            
+//             // Send custom charging start message to ESP device
+//             try {
+//               const startMessage = {
+//                 command: 'START_CHARGING',
+//                 orderId: id,
+//                 customerName: `${order.firstName} ${order.lastName}`,
+//                 customerPhone: order.phone,
+//                 timestamp: new Date().toISOString(),
+//                 paymentConfirmed: true
+//               };
+              
+//               await ocppWebSocketServer.sendCustomMessage(
+//                 order.charger.chargerId, 
+//                 'ChargingStart', 
+//                 startMessage
+//               );
+              
+//               espNotified = true;
+//               console.log('✅ ESP device notified of charging start');
+//             } catch (notifyError) {
+//               console.error('⚠️ Failed to send start notification to ESP:', notifyError);
+//             }
+//           } else {
+//             console.log('❌ OCPP remote start failed');
+//           }
+//         } else {
+//           console.log('⚠️ Charge point not connected via OCPP, proceeding with manual start');
+//         }
+//       } catch (ocppError) {
+//         console.error('❌ OCPP remote start error:', ocppError);
+//       }
+//     }
+
+//     // Update order to mark charging as started
+//     await orders.updateOne(
+//       { _id: new ObjectId(id) },
+//       {
+//         $set: {
+//           chargingStarted: true,
+//           chargingStartedAt: new Date(),
+//           status: 'charging',
+//           ocppControlled: ocppStarted,
+//           espNotified: espNotified,
+//           updatedAt: new Date()
+//         }
+//       }
+//     );
+
+//     console.log(`✅ Charging started for order: ${id} (OCPP: ${ocppStarted ? 'Yes' : 'No'}, ESP Notified: ${espNotified ? 'Yes' : 'No'})`);
+    
+//     res.json({ 
+//       message: "Charging started", 
+//       orderId: id,
+//       ocppControlled: ocppStarted,
+//       espNotified: espNotified
+//     });
+//   } catch (err) {
+//     console.error('❌ Error starting charging:', err);
+//     res.status(500).json({ error: "Internal error" });
+//   }
+// });
+
+// // Enhanced charging status endpoint with ESP stop notification
+// app.post('/api/charging-status', async (req, res) => {
+//   try {
+//     const { orderId, startTime, endTime, durationSeconds, amountPaid, powerKW, stopReason } = req.body;
+//     if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid data" });
+
+//     const order = await orders.findOne({ _id: new ObjectId(orderId) });
+//     if (!order) return res.status(404).json({ error: "Order not found" });
+
+//     // Send stop notification to ESP device
+//     let espStopNotified = false;
+//     if (order.charger && order.charger.chargerId) {
+//       try {
+//         const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
+//         if (chargePointStatus && chargePointStatus.isConnected) {
+//           const stopMessage = {
+//             command: 'STOP_CHARGING',
+//             orderId: orderId,
+//             customerName: `${order.firstName} ${order.lastName}`,
+//             customerPhone: order.phone,
+//             chargingDuration: durationSeconds,
+//             finalAmount: parseFloat(amountPaid) || 0,
+//             powerDelivered: parseFloat(powerKW) || 0,
+//             stopReason: stopReason || 'user_requested',
+//             timestamp: new Date().toISOString()
+//           };
+          
+//           await ocppWebSocketServer.sendCustomMessage(
+//             order.charger.chargerId, 
+//             'ChargingStop', 
+//             stopMessage
+//           );
+          
+//           espStopNotified = true;
+//           console.log('✅ ESP device notified of charging stop');
+//         }
+//       } catch (notifyError) {
+//         console.error('⚠️ Failed to send stop notification to ESP:', notifyError);
+//       }
+//     }
+
+//     const chargingData = {
+//       orderId: new ObjectId(orderId),
+//       startTime: new Date(startTime),
+//       endTime: endTime ? new Date(endTime) : new Date(),
+//       durationSeconds,
+//       amountPaid: parseFloat(amountPaid) || 0,
+//       powerKW: parseFloat(powerKW) || 0,
+//       userPhone: order.phone,
+//       userEmail: order.email,
+//       userName: `${order.firstName} ${order.lastName}`,
+//       charger: order.charger,
+//       stopReason: stopReason || 'user_requested',
+//       espStopNotified: espStopNotified,
+//       createdAt: new Date()
+//     };
+
+//     const result = await chargingStatus.insertOne(chargingData);
+
+//     await orders.updateOne(
+//       { _id: new ObjectId(orderId) },
+//       {
+//         $set: {
+//           chargingCompleted: true,
+//           chargingCompletedAt: new Date(),
+//           status: 'completed',
+//           finalAmount: parseFloat(amountPaid) || 0,
+//           espStopNotified: espStopNotified,
+//           updatedAt: new Date()
+//         }
+//       }
+//     );
+
+//     console.log(`✅ Charging session completed for order: ${orderId} (ESP Stop Notified: ${espStopNotified ? 'Yes' : 'No'})`);
+//     res.status(200).json({ 
+//       message: "Charging session saved", 
+//       id: result.insertedId,
+//       espStopNotified: espStopNotified 
+//     });
+//   } catch (err) {
+//     console.error('❌ Error saving charging session:', err);
+//     res.status(500).json({ error: "Internal error" });
+//   }
+// });
+
+// // New endpoint for manual ESP device control
+// app.post('/api/esp-control/:chargePointId', async (req, res) => {
+//   try {
+//     const { chargePointId } = req.params;
+//     const { command, data } = req.body;
+
+//     if (!command) {
+//       return res.status(400).json({ error: 'Command is required' });
+//     }
+
+//     const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(chargePointId);
+//     if (!chargePointStatus || !chargePointStatus.isConnected) {
+//       return res.status(404).json({ error: 'ESP device not connected' });
+//     }
+
+//     let response;
+//     switch (command.toLowerCase()) {
+//       case 'start':
+//         response = await ocppWebSocketServer.sendCustomMessage(chargePointId, 'ChargingStart', {
+//           command: 'START_CHARGING',
+//           ...data,
+//           timestamp: new Date().toISOString()
+//         });
+//         break;
+      
+//       case 'stop':
+//         response = await ocppWebSocketServer.sendCustomMessage(chargePointId, 'ChargingStop', {
+//           command: 'STOP_CHARGING',
+//           ...data,
+//           timestamp: new Date().toISOString()
+//         });
+//         break;
+      
+//       case 'status':
+//         response = await ocppWebSocketServer.sendCustomMessage(chargePointId, 'StatusRequest', {
+//           command: 'GET_STATUS',
+//           timestamp: new Date().toISOString()
+//         });
+//         break;
+      
+//       default:
+//         return res.status(400).json({ error: 'Invalid command' });
+//     }
+
+//     res.json({ 
+//       message: `Command ${command} sent to ESP device`, 
+//       chargePointId,
+//       response 
+//     });
+//   } catch (error) {
+//     console.error('❌ ESP control error:', error);
+//     res.status(500).json({ error: 'Failed to send command to ESP device' });
+//   }
+// });
+
+// // Endpoint to get ESP device status
+// app.get('/api/esp-status/:chargePointId', async (req, res) => {
+//   try {
+//     const { chargePointId } = req.params;
+    
+//     const status = await ocppWebSocketServer.getChargePointStatus(chargePointId);
+    
+//     if (!status) {
+//       return res.status(404).json({ error: 'ESP device not found' });
+//     }
+    
+//     res.json({
+//       chargePointId,
+//       isConnected: status.isConnected,
+//       lastHeartbeat: status.lastHeartbeat,
+//       status: status.status,
+//       connectors: status.connectors,
+//       deviceInfo: {
+//         vendor: status.vendor,
+//         model: status.model,
+//         firmwareVersion: status.firmwareVersion
+//       }
+//     });
+//   } catch (error) {
+//     console.error('❌ Error getting ESP status:', error);
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// });
+
+// // Webhook endpoint for ESP device to report charging status
+// app.post('/api/esp-webhook/:chargePointId', async (req, res) => {
+//   try {
+//     const { chargePointId } = req.params;
+//     const { event, data, timestamp } = req.body;
+
+//     console.log(`📥 ESP webhook from ${chargePointId}:`, { event, data });
+
+//     // Log the event
+//     await db.collection('espEvents').insertOne({
+//       chargePointId,
+//       event,
+//       data,
+//       timestamp: timestamp ? new Date(timestamp) : new Date(),
+//       receivedAt: new Date()
+//     });
+
+//     // Handle different events
+//     switch (event) {
+//       case 'charging_started':
+//         console.log(`✅ ESP confirmed charging started for order: ${data.orderId}`);
+//         if (data.orderId && ObjectId.isValid(data.orderId)) {
+//           await orders.updateOne(
+//             { _id: new ObjectId(data.orderId) },
+//             {
+//               $set: {
+//                 espConfirmedStart: true,
+//                 espStartConfirmedAt: new Date(),
+//                 updatedAt: new Date()
+//               }
+//             }
+//           );
+//         }
+//         break;
+
+//       case 'charging_stopped':
+//         console.log(`✅ ESP confirmed charging stopped for order: ${data.orderId}`);
+//         if (data.orderId && ObjectId.isValid(data.orderId)) {
+//           await orders.updateOne(
+//             { _id: new ObjectId(data.orderId) },
+//             {
+//               $set: {
+//                 espConfirmedStop: true,
+//                 espStopConfirmedAt: new Date(),
+//                 actualDuration: data.duration,
+//                 actualPowerDelivered: data.powerDelivered,
+//                 updatedAt: new Date()
+//               }
+//             }
+//           );
+//         }
+//         break;
+
+//       case 'error':
+//         console.error(`❌ ESP error reported: ${data.message}`);
+//         break;
+
+//       case 'status_update':
+//         console.log(`📊 ESP status update: ${data.status}`);
+//         break;
+//     }
+
+//     res.json({ message: 'Webhook received', event, timestamp: new Date() });
+//   } catch (error) {
+//     console.error('❌ ESP webhook error:', error);
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// });
+
+//   app.post('/api/ocpp/unlock/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { connectorId } = req.body;
+
+//       const messageId = await ocppWebSocketServer.unlockConnector(chargePointId, connectorId);
+      
+//       if (!messageId) {
+//         return res.status(400).json({ error: 'Charge point not connected' });
+//       }
+
+//       res.json({ message: 'Unlock command sent', messageId });
+//     } catch (error) {
+//       console.error('❌ Unlock error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   app.post('/api/ocpp/reset/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const { type } = req.body;
+
+//       const messageId = await ocppWebSocketServer.resetChargePoint(chargePointId, type);
+      
+//       if (!messageId) {
+//         return res.status(400).json({ error: 'Charge point not connected' });
+//       }
+
+//       res.json({ message: 'Reset command sent', messageId });
+//     } catch (error) {
+//       console.error('❌ Reset error:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get OCPP transactions
+//   app.get('/api/ocpp/transactions', async (req, res) => {
+//     try {
+//       const transactions = await db.collection('ocppTransactions')
+//         .find({})
+//         .sort({ createdAt: -1 })
+//         .toArray();
+      
+//       res.json(transactions);
+//     } catch (error) {
+//       console.error('❌ Error fetching OCPP transactions:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   // Get meter values
+//   app.get('/api/ocpp/meter-values/:chargePointId', async (req, res) => {
+//     try {
+//       const { chargePointId } = req.params;
+//       const meterValues = await db.collection('ocppMeterValues')
+//         .find({ chargerId: chargePointId })
+//         .sort({ timestamp: -1 })
+//         .limit(100)
+//         .toArray();
+      
+//       res.json(meterValues);
+//     } catch (error) {
+//       console.error('❌ Error fetching meter values:', error);
+//       res.status(500).json({ error: 'Internal server error' });
+//     }
+//   });
+
+//   console.log('✅ All API endpoints initialized');
+  
+// }).catch(err => {
+//   console.error("❌ MongoDB connection failed:", err);
+//   process.exit(1);
+// });
+
+// const PORT = process.env.PORT || 5000;
+// app.listen(PORT, () => {
+//   console.log(`🚀 Server running on port ${PORT}`);
+// });
+
+
+
 
 const express = require('express');
 const { ObjectId } = require('mongodb');
-const { MongoClient } = require('mongodb');
+const connectDB = require('./config/mongo');
 const cors = require('cors');
-const http = require('http');
 const https = require('https');
+const http = require('http');
 
 // OCPP imports
 const OCPPWebSocketServer = require('./ocpp/ocpp-websocket-server');
 const OCPPCMSConfig = require('./ocpp/ocpp-cms-config');
+
+// ===== PCB INTEGRATION API ENDPOINTS =====
+// Add this import at the top of your server.js
 const OCPPPCBIntegration = require('./ocpp/ocpp-pcb-integration');
 
-// Initialize Express app
-const app = express();
-const PORT = process.env.PORT || 10000;
-
-// Global variables
-let db;
-let ocppWebSocketServer = null;
-let ocppCMS = null;
+// Add this after your database connection
 let pcbIntegration = null;
 
-// Middleware
-// app.use(cors({
-//   origin: [
-//     'http://localhost:3000', 
-//     'https://www.ntevstore.nl',
-//     process.env.CORS_ORIGIN || '*'
-//   ],
-//   credentials: true
-// }));
-app.use(cors({
-  origin: '*'
-}));
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Create HTTP server instance first
+const server = http.createServer(app);
 
-// Custom fetch function using Node.js built-in https module
+// Global OCPP variables
+let ocppWebSocketServer = null;
+let ocppCMS = null;
+
+// Custom fetch function using Node.js built-in https module (no external dependencies)
 function customFetch(url, options = {}) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const requestOptions = {
       hostname: urlObj.hostname,
-      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      port: urlObj.port || 443,
       path: urlObj.pathname + urlObj.search,
       method: options.method || 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      }
+      headers: options.headers || {}
     };
 
-    const protocol = urlObj.protocol === 'https:' ? https : require('http');
-    
-    const req = protocol.request(requestOptions, (res) => {
+    const req = https.request(requestOptions, (res) => {
       let data = '';
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
         resolve({
           ok: res.statusCode >= 200 && res.statusCode < 300,
           status: res.statusCode,
-          statusText: res.statusMessage,
           json: () => Promise.resolve(JSON.parse(data)),
-          text: () => Promise.resolve(data),
-          headers: res.headers
+          text: () => Promise.resolve(data)
         });
       });
     });
@@ -76,934 +4485,1957 @@ function customFetch(url, options = {}) {
     req.on('error', reject);
     
     if (options.body) {
-      req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+      req.write(options.body);
     }
     
     req.end();
   });
 }
 
-// Database initialization
-async function initializeDatabase() {
-  try {
-    // Use environment variable for MongoDB URI
-    const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017';
-    const dbName = process.env.DB_NAME || 'test';
-    
-    console.log('🔄 Connecting to MongoDB Atlas...'); 
-    
-    const client = new MongoClient(mongoUri, {
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-      maxPoolSize: 50
-    });
-    
-    await client.connect();
-    console.log('✅ Connected to MongoDB Atlas');
-    
-    db = client.db(dbName);
-    
-    // Create indexes for better performance
-    const chargers = db.collection('chargers');
-    const orders = db.collection('orders');
-    const chargingStatus = db.collection('chargingStatus');
-    const ownerSessions = db.collection('ownerSessions');
+// After connecting to MongoDB, initialize OCPP server and all other services
+connectDB().then((db) => {
+  const chargers = db.collection('chargers');
+  const orders = db.collection('orders');
+  const chargingStatus = db.collection('chargingStatus');
+  const ownerSessions = db.collection('ownerSessions');
 
-    await Promise.all([
-      orders.createIndex({ email: 1 }),
-      orders.createIndex({ phone: 1 }),
-      orders.createIndex({ paymentStatus: 1 }),
-      orders.createIndex({ createdAt: -1 }),
-      chargingStatus.createIndex({ orderId: 1 }),
-      chargingStatus.createIndex({ createdAt: -1 }),
-      chargers.createIndex({ chargerId: 1 }, { unique: true })
-    ]);
-    console.log("✅ Database indexes created");
-    
-    return db;
+  console.log("✅ Connected to MongoDB collections");
 
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', {
-      error: error.message,
-      code: error.code,
-      uri: '[REDACTED]' // Hide connection string for security
-    });
-    throw error;
-  }
-}
-
-// External API authentication middleware
-const authenticateExternalAPI = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    const apiKey = req.headers['x-api-key'];
-    
-    if (!authHeader && !apiKey) {
-      return res.status(401).json({ 
-        error: 'Authentication required',
-        message: 'Provide either Authorization header with Bearer token or X-API-Key header'
-      });
-    }
-
-    if (authHeader && pcbIntegration) {
-      const token = authHeader.replace('Bearer ', '');
-      const { decoded } = await pcbIntegration.verifyJWT(token);
-      req.user = decoded;
-    } else if (apiKey && pcbIntegration) {
-      const connection = await pcbIntegration.externalConnections.findOne({ 
-        apiKey, 
-        isActive: true,
-        expiresAt: { $gt: new Date() }
-      });
-      if (!connection) {
-        return res.status(401).json({ error: 'Invalid or expired API key' });
-      }
-      req.user = connection;
-    }
-
-    next();
-  } catch (error) {
-    console.error('❌ Authentication error:', error);
-    res.status(401).json({ error: 'Authentication failed' });
-  }
-};
-
-// Create OCPP-specific API routes
-function createOCPPRoutes(ocppServer) {
-  const router = express.Router();
+  // Initialize OCPP services with the HTTP server instance
+  ocppCMS = new OCPPCMSConfig(db);
+  ocppWebSocketServer = new OCPPWebSocketServer(db, server); // Pass HTTP server instance
   
-  // Get all connected charge points
-  router.get('/chargepoints', (req, res) => {
-    try {
-      const chargePoints = ocppServer.getAllChargePointStatuses();
-      res.json({
-        success: true,
-        data: chargePoints,
-        count: chargePoints.length
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
+  // Start OCPP WebSocket Server (will attach to existing HTTP server)
+  ocppWebSocketServer.initialize().then(() => {
+    console.log('✅ OCPP WebSocket Server initialized on same port');
+  }).catch(error => {
+    console.error('❌ Failed to initialize OCPP WebSocket Server:', error);
   });
 
-  // Get specific charge point status
-  router.get('/chargepoints/:id', async (req, res) => {
-    try {
-      const status = await ocppServer.getChargePointStatus(req.params.id);
-      if (!status) {
-        return res.status(404).json({
-          success: false,
-          error: 'Charge point not found'
-        });
-      }
-      res.json({
-        success: true,
-        data: status
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
-  });
+  // Initialize PCB Integration
+  pcbIntegration = new OCPPPCBIntegration(db);
+  console.log('✅ PCB Integration initialized');
 
-  // Send custom message to ESP
-  router.post('/chargepoints/:id/message', async (req, res) => {
+  // Basic route
+  app.get('/', (req, res) => res.send('🚀 EV Charging Backend Running with OCPP on Single Port!'));
+
+  // ========== PCB DEVICE MANAGEMENT ENDPOINTS ==========
+  
+  // Register new PCB device
+  app.post('/api/pcb/register-device', async (req, res) => {
     try {
-      const { action, payload } = req.body;
+      const deviceData = req.body;
       
-      if (!action || !payload) {
-        return res.status(400).json({
-          success: false,
-          error: 'Action and payload are required'
+      // Validate required fields
+      if (!deviceData.chargePointId || !deviceData.hardwareId) {
+        return res.status(400).json({ 
+          error: 'chargePointId and hardwareId are required' 
         });
       }
 
-      const response = await ocppServer.sendCustomMessage(req.params.id, action, payload);
+      // Check if device already exists
+      const existingDevice = await pcbIntegration.pcbDevices.findOne({
+        $or: [
+          { hardwareId: deviceData.hardwareId },
+          { chargePointId: deviceData.chargePointId }
+        ]
+      });
+
+      if (existingDevice) {
+        return res.status(400).json({ 
+          error: 'Device with this hardware ID or charge point ID already exists' 
+        });
+      }
+
+      const result = await pcbIntegration.registerPCBDevice(deviceData);
+      
       res.json({
-        success: true,
-        data: response
+        message: 'PCB device registered successfully',
+        device: result,
+        connectionInstructions: {
+          step1: 'Flash the provided credentials to your PCB',
+          step2: 'Connect to WebSocket endpoint using the provided URL',
+          step3: 'Send authentication headers with each OCPP message',
+          step4: 'Implement OCPP 1.6 protocol for communication'
+        }
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+      console.error('❌ Error registering PCB device:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  // Start charging remotely
-  router.post('/chargepoints/:id/start', async (req, res) => {
+  // Add to your backend server.js
+  app.post('/api/orders/:orderId/credentials', async (req, res) => {
     try {
+      const { orderId } = req.params;
+      const { ocppCredentials, generatedAt } = req.body;
+
+      // Update the order with OCPP credentials
+      await db.collection('orders').updateOne(
+        { _id: new ObjectId(orderId) },
+        { 
+          $set: { 
+            ocppCredentials,
+            credentialsGeneratedAt: generatedAt,
+            updatedAt: new Date()
+          } 
+        }
+      );
+
+      res.json({ message: 'Credentials saved successfully' });
+    } catch (error) {
+      console.error('Error saving credentials:', error);
+      res.status(500).json({ error: 'Failed to save credentials' });
+    }
+  });
+
+  // Get order with credentials
+  app.get('/api/orders/:orderId/credentials', async (req, res) => {
+    try {
+      const { orderId } = req.params;
+      
+      const order = await db.collection('orders').findOne({ 
+        _id: new ObjectId(orderId) 
+      });
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      res.json({
+        orderId: order._id,
+        customerName: `${order.firstName} ${order.lastName}`,
+        email: order.email,
+        charger: order.charger,
+        ocppCredentials: order.ocppCredentials,
+        generatedAt: order.credentialsGeneratedAt
+      });
+    } catch (error) {
+      console.error('Error fetching order credentials:', error);
+      res.status(500).json({ error: 'Failed to fetch credentials' });
+    }
+  });
+
+  // Get all PCB devices
+  app.get('/api/pcb/devices', async (req, res) => {
+    try {
+      const { includeOffline } = req.query;
+      const devices = await pcbIntegration.getPCBDevices(includeOffline === 'true');
+      
+      // Remove sensitive information
+      const sanitizedDevices = devices.map(device => ({
+        deviceId: device.deviceId,
+        chargePointId: device.chargePointId,
+        deviceName: device.deviceName,
+        status: device.status,
+        isOnline: device.isOnline,
+        lastHeartbeat: device.lastHeartbeat,
+        firmwareVersion: device.firmwareVersion,
+        capabilities: device.capabilities,
+        createdAt: device.createdAt
+      }));
+
+      res.json(sanitizedDevices);
+    } catch (error) {
+      console.error('❌ Error fetching PCB devices:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get specific PCB device details
+  app.get('/api/pcb/devices/:deviceId', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const device = await pcbIntegration.pcbDevices.findOne({ deviceId });
+
+      if (!device) {
+        return res.status(404).json({ error: 'Device not found' });
+      }
+
+      // Remove sensitive information
+      const sanitizedDevice = {
+        deviceId: device.deviceId,
+        chargePointId: device.chargePointId,
+        deviceName: device.deviceName,
+        status: device.status,
+        isOnline: device.isOnline,
+        lastHeartbeat: device.lastHeartbeat,
+        firmwareVersion: device.firmwareVersion,
+        hardwareVersion: device.hardwareVersion,
+        capabilities: device.capabilities,
+        createdAt: device.createdAt,
+        lastConnection: device.lastConnection
+      };
+
+      res.json(sanitizedDevice);
+    } catch (error) {
+      console.error('❌ Error fetching PCB device:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Send command to PCB device
+  app.post('/api/pcb/devices/:deviceId/command', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const { command, parameters } = req.body;
+
+      if (!command) {
+        return res.status(400).json({ error: 'Command is required' });
+      }
+
+      const result = await pcbIntegration.handlePCBCommand(deviceId, command, parameters);
+      res.json({ message: 'Command sent successfully', result });
+    } catch (error) {
+      console.error('❌ Error sending PCB command:', error);
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Update PCB device status (called by PCB)
+  app.post('/api/pcb/devices/:deviceId/status', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const statusData = req.body;
+
+      // Authenticate device
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization required' });
+      }
+
+      const token = authHeader.replace('Bearer ', '');
+      await pcbIntegration.verifyJWT(token);
+
+      await pcbIntegration.updatePCBStatus(deviceId, statusData);
+      res.json({ message: 'Status updated successfully' });
+    } catch (error) {
+      console.error('❌ Error updating PCB status:', error);
+      res.status(error.message.includes('verification') ? 401 : 500)
+         .json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Refresh device credentials
+  app.post('/api/pcb/devices/:deviceId/refresh-credentials', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      const newCredentials = await pcbIntegration.refreshDeviceCredentials(deviceId);
+      
+      res.json({
+        message: 'Credentials refreshed successfully',
+        credentials: newCredentials,
+        note: 'Please update your PCB with the new credentials immediately'
+      });
+    } catch (error) {
+      console.error('❌ Error refreshing credentials:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Revoke PCB device
+  app.delete('/api/pcb/devices/:deviceId', async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      await pcbIntegration.revokePCBDevice(deviceId);
+      
+      res.json({ message: 'Device revoked successfully' });
+    } catch (error) {
+      console.error('❌ Error revoking PCB device:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== EXTERNAL WEBSITE CREDENTIALS ENDPOINTS ==========
+  
+  // Generate credentials for external website
+  app.post('/api/external/generate-credentials', async (req, res) => {
+    try {
+      const websiteData = req.body;
+      
+      // Validate required fields
+      if (!websiteData.websiteName || !websiteData.websiteUrl || !websiteData.contactEmail) {
+        return res.status(400).json({ 
+          error: 'websiteName, websiteUrl, and contactEmail are required' 
+        });
+      }
+
+      const credentials = await pcbIntegration.generateWebsiteCredentials(websiteData);
+      
+      res.json({
+        message: 'External website credentials generated successfully',
+        credentials,
+        documentation: {
+          authentication: 'Use Bearer token in Authorization header',
+          rateLimit: 'Check X-RateLimit headers in responses',
+          webhooks: 'Configure webhook URL to receive real-time updates'
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error generating website credentials:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // List external connections
+  app.get('/api/external/connections', async (req, res) => {
+    try {
+      const connections = await pcbIntegration.externalConnections
+        .find({ isActive: true })
+        .project({
+          connectionId: 1,
+          websiteName: 1,
+          websiteUrl: 1,
+          permissions: 1,
+          createdAt: 1,
+          expiresAt: 1,
+          rateLimit: 1
+        })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.json(connections);
+    } catch (error) {
+      console.error('❌ Error fetching external connections:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== EXTERNAL API ENDPOINTS ==========
+  
+  // Middleware for external API authentication
+  const authenticateExternalAPI = async (req, res, next) => {
+    try {
+      const authHeader = req.headers.authorization;
+      const apiKey = req.headers['x-api-key'];
+      
+      if (!authHeader && !apiKey) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      if (authHeader) {
+        const token = authHeader.replace('Bearer ', '');
+        const { decoded } = await pcbIntegration.verifyJWT(token);
+        req.user = decoded;
+      } else if (apiKey) {
+        const connection = await pcbIntegration.externalConnections.findOne({ 
+          apiKey, 
+          isActive: true 
+        });
+        if (!connection) {
+          return res.status(401).json({ error: 'Invalid API key' });
+        }
+        req.user = connection;
+      }
+
+      next();
+    } catch (error) {
+      res.status(401).json({ error: 'Authentication failed' });
+    }
+  };
+
+  // External API: Get charge points
+  app.get('/api/external/charge-points', authenticateExternalAPI, async (req, res) => {
+    try {
+      const chargePoints = await ocppCMS.getAllChargePoints();
+      const connectedPoints = ocppWebSocketServer.getConnectedChargePoints();
+      
+      const response = chargePoints.map(cp => {
+        const connected = connectedPoints.find(c => c.chargePointId === cp.chargePointId);
+        return {
+          chargePointId: cp.chargePointId,
+          status: cp.status,
+          isConnected: !!connected,
+          connectors: cp.connectors?.length || 1,
+          lastHeartbeat: connected?.lastHeartbeat || cp.lastHeartbeat
+        };
+      });
+
+      res.json(response);
+    } catch (error) {
+      console.error('❌ External API error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // External API: Remote start
+  app.post('/api/external/remote-start', authenticateExternalAPI, async (req, res) => {
+    try {
+      const { chargePointId, idTag, connectorId = 1 } = req.body;
+
+      if (!chargePointId || !idTag) {
+        return res.status(400).json({ error: 'chargePointId and idTag are required' });
+      }
+
+      const success = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+      if (success) {
+        res.json({ 
+          message: 'Remote start initiated', 
+          chargePointId, 
+          status: 'accepted' 
+        });
+      } else {
+        res.status(400).json({ 
+          error: 'Remote start failed',
+          chargePointId,
+          status: 'rejected'
+        });
+      }
+    } catch (error) {
+      console.error('❌ External remote start error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // External API: Remote stop
+  app.post('/api/external/remote-stop', authenticateExternalAPI, async (req, res) => {
+    try {
+      const { chargePointId, transactionId } = req.body;
+
+      if (!chargePointId || !transactionId) {
+        return res.status(400).json({ error: 'chargePointId and transactionId are required' });
+      }
+
+      const success = await ocppWebSocketServer.remoteStopTransaction(chargePointId, transactionId);
+      
+      if (success) {
+        res.json({ 
+          message: 'Remote stop initiated', 
+          chargePointId, 
+          transactionId,
+          status: 'accepted' 
+        });
+      } else {
+        res.status(400).json({ 
+          error: 'Remote stop failed',
+          chargePointId,
+          transactionId,
+          status: 'rejected'
+        });
+      }
+    } catch (error) {
+      console.error('❌ External remote stop error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // External API: Get transactions
+  app.get('/api/external/transactions', authenticateExternalAPI, async (req, res) => {
+    try {
+      const { chargePointId, status, limit = 50 } = req.query;
+      
+      let query = {};
+      if (chargePointId) query.chargePointId = chargePointId;
+      if (status) query.status = status;
+
+      const transactions = await db.collection('ocppTransactions')
+        .find(query)
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .project({
+          transactionId: 1,
+          chargePointId: 1,
+          connectorId: 1,
+          status: 1,
+          startTimestamp: 1,
+          stopTimestamp: 1,
+          energyDelivered: 1
+        })
+        .toArray();
+
+      res.json(transactions);
+    } catch (error) {
+      console.error('❌ External transactions API error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== PCB AUTHENTICATION ENDPOINT =====
+  
+  // PCB device authentication
+  app.post('/api/pcb/authenticate', async (req, res) => {
+    try {
+      const { apiKey, deviceSecret } = req.body;
+      
+      if (!apiKey) {
+        return res.status(400).json({ error: 'API key is required' });
+      }
+
+      const device = await pcbIntegration.authenticatePCBDevice(apiKey, deviceSecret);
+      const credentials = await pcbIntegration.generateConnectionCredentials(device.deviceId);
+      
+      res.json({
+        message: 'Authentication successful',
+        deviceId: device.deviceId,
+        connectionCredentials: credentials,
+        serverTime: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('❌ PCB authentication error:', error);
+      res.status(401).json({ error: error.message });
+    }
+  });
+
+  // ========== CMS CONFIGURATION ENDPOINTS ==========
+  
+  // Get OCPP configuration
+  app.get('/api/cms/config', async (req, res) => {
+    try {
+      const config = await ocppCMS.getConfig();
+      res.json(config);
+    } catch (error) {
+      console.error('❌ Error fetching OCPP config:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Update OCPP configuration
+  app.put('/api/cms/config', async (req, res) => {
+    try {
+      const configData = req.body;
+      
+      // Validate WebSocket URL
+      if (configData.websocketUrl && !ocppCMS.validateWebSocketUrl(configData.websocketUrl)) {
+        return res.status(400).json({ error: 'Invalid WebSocket URL format' });
+      }
+
+      await ocppCMS.updateConfig(configData);
+      
+      // If WebSocket URL changed, restart server
+      if (configData.websocketUrl) {
+        console.log('🔄 Restarting OCPP WebSocket Server with new configuration...');
+        await ocppWebSocketServer.stop();
+        ocppWebSocketServer = new OCPPWebSocketServer(db, server); // Pass HTTP server instance
+        await ocppWebSocketServer.initialize();
+      }
+
+      res.json({ message: 'Configuration updated successfully' });
+    } catch (error) {
+      console.error('❌ Error updating OCPP config:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== CHARGE POINT MANAGEMENT ENDPOINTS ==========
+  
+  // Get all charge points (CMS view)
+  app.get('/api/cms/charge-points', async (req, res) => {
+    try {
+      const chargePoints = await ocppCMS.getAllChargePoints();
+      const connectedPoints = ocppWebSocketServer.getConnectedChargePoints();
+      
+      // Merge connected status
+      const mergedData = chargePoints.map(cp => {
+        const connected = connectedPoints.find(c => c.chargePointId === cp.chargePointId);
+        return {
+          ...cp,
+          isConnected: !!connected,
+          lastHeartbeat: connected?.lastHeartbeat || cp.lastHeartbeat
+        };
+      });
+
+      res.json(mergedData);
+    } catch (error) {
+      console.error('❌ Error fetching charge points:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get specific charge point details
+  app.get('/api/cms/charge-points/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const chargePoint = await ocppWebSocketServer.getChargePointStatus(id);
+      
+      if (!chargePoint) {
+        return res.status(404).json({ error: 'Charge point not found' });
+      }
+
+      res.json(chargePoint);
+    } catch (error) {
+      console.error('❌ Error fetching charge point:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Register new charge point
+  app.post('/api/cms/charge-points', async (req, res) => {
+    try {
+      const chargePointData = req.body;
+      
+      if (!chargePointData.chargePointId) {
+        return res.status(400).json({ error: 'Charge Point ID is required' });
+      }
+
+      // Check if charge point already exists
+      const existing = await ocppCMS.getChargePoint(chargePointData.chargePointId);
+      if (existing) {
+        return res.status(400).json({ error: 'Charge point already exists' });
+      }
+
+      const result = await ocppCMS.registerChargePoint(chargePointData);
+      res.json({ message: 'Charge point registered successfully', id: result.insertedId });
+    } catch (error) {
+      console.error('❌ Error registering charge point:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Generate charge point configuration
+  app.get('/api/cms/charge-points/:id/config', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const config = await ocppCMS.generateChargePointConfig(id);
+      res.json(config);
+    } catch (error) {
+      console.error('❌ Error generating charge point config:', error);
+      res.status(404).json({ error: 'Charge point not found' });
+    }
+  });
+
+  // ========== REMOTE CONTROL ENDPOINTS ==========
+  
+  // Remote start transaction
+  app.post('/api/cms/remote-start/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
       const { idTag, connectorId = 1 } = req.body;
-      
+
       if (!idTag) {
-        return res.status(400).json({
-          success: false,
-          error: 'idTag is required'
-        });
+        return res.status(400).json({ error: 'idTag is required' });
       }
 
-      const success = await ocppServer.remoteStartTransaction(req.params.id, idTag, connectorId);
-      res.json({
-        success,
-        message: success ? 'Remote start initiated' : 'Remote start failed'
-      });
+      const success = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+      if (success) {
+        res.json({ message: 'Remote start command sent successfully', status: 'accepted' });
+      } else {
+        res.status(400).json({ error: 'Remote start command failed or was rejected' });
+      }
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+      console.error('❌ Remote start error:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  // Stop charging remotely
-  router.post('/chargepoints/:id/stop', async (req, res) => {
+  // Remote stop transaction
+  app.post('/api/cms/remote-stop/:chargePointId', async (req, res) => {
     try {
+      const { chargePointId } = req.params;
       const { transactionId } = req.body;
-      
+
       if (!transactionId) {
-        return res.status(400).json({
-          success: false,
-          error: 'transactionId is required'
-        });
+        return res.status(400).json({ error: 'Transaction ID is required' });
       }
 
-      const success = await ocppServer.remoteStopTransaction(req.params.id, transactionId);
-      res.json({
-        success,
-        message: success ? 'Remote stop initiated' : 'Remote stop failed'
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
-  });
-
-  // Notify charging start to ESP
-  router.post('/chargepoints/:id/notify-start', async (req, res) => {
-    try {
-      const orderData = req.body;
+      const success = await ocppWebSocketServer.remoteStopTransaction(chargePointId, transactionId);
       
-      if (!orderData._id) {
-        return res.status(400).json({
-          success: false,
-          error: 'Order data with _id is required'
-        });
+      if (success) {
+        res.json({ message: 'Remote stop command sent successfully', status: 'accepted' });
+      } else {
+        res.status(400).json({ error: 'Remote stop command failed or was rejected' });
       }
-
-      const response = await ocppServer.notifyChargingStart(req.params.id, orderData);
-      res.json({
-        success: true,
-        data: response
-      });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
-  });
-
-  // Notify charging stop to ESP
-  router.post('/chargepoints/:id/notify-stop', async (req, res) => {
-    try {
-      const { orderData, chargingData } = req.body;
-      
-      if (!orderData || !chargingData) {
-        return res.status(400).json({
-          success: false,
-          error: 'Order data and charging data are required'
-        });
-      }
-
-      const response = await ocppServer.notifyChargingStop(req.params.id, orderData, chargingData);
-      res.json({
-        success: true,
-        data: response
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
-  });
-
-  // Reset charge point
-  router.post('/chargepoints/:id/reset', async (req, res) => {
-    try {
-      const { type = 'Soft' } = req.body;
-      
-      const success = await ocppServer.resetChargePoint(req.params.id, type);
-      res.json({
-        success,
-        message: success ? 'Reset initiated' : 'Reset failed'
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+      console.error('❌ Remote stop error:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
   // Unlock connector
-  router.post('/chargepoints/:id/unlock', async (req, res) => {
+  app.post('/api/cms/unlock/:chargePointId', async (req, res) => {
     try {
+      const { chargePointId } = req.params;
       const { connectorId = 1 } = req.body;
+
+      const success = await ocppWebSocketServer.unlockConnector(chargePointId, connectorId);
       
-      const success = await ocppServer.unlockConnector(req.params.id, connectorId);
-      res.json({
-        success,
-        message: success ? 'Unlock initiated' : 'Unlock failed'
-      });
+      if (success) {
+        res.json({ message: 'Unlock command sent successfully', status: 'unlocked' });
+      } else {
+        res.status(400).json({ error: 'Unlock command failed or connector was not unlocked' });
+      }
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+      console.error('❌ Unlock error:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  // Broadcast message to all connected ESP devices
-  router.post('/broadcast', async (req, res) => {
+  // Reset charge point
+  app.post('/api/cms/reset/:chargePointId', async (req, res) => {
     try {
-      const { action, payload } = req.body;
-      
-      if (!action || !payload) {
-        return res.status(400).json({
-          success: false,
-          error: 'Action and payload are required'
-        });
+      const { chargePointId } = req.params;
+      const { type = 'Soft' } = req.body;
+
+      if (!['Soft', 'Hard'].includes(type)) {
+        return res.status(400).json({ error: 'Reset type must be "Soft" or "Hard"' });
       }
 
-      const results = await ocppServer.broadcastToAllESP(action, payload);
-      res.json({
-        success: true,
-        data: results
-      });
+      const success = await ocppWebSocketServer.resetChargePoint(chargePointId, type);
+      
+      if (success) {
+        res.json({ message: `${type} reset command sent successfully`, status: 'accepted' });
+      } else {
+        res.status(400).json({ error: 'Reset command failed or was rejected' });
+      }
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+      console.error('❌ Reset error:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  // Get OCPP server statistics
-  router.get('/stats', (req, res) => {
+  // ========== TRANSACTION MANAGEMENT ENDPOINTS ==========
+  
+  // Get all transactions
+  app.get('/api/cms/transactions', async (req, res) => {
     try {
-      const connected = ocppServer.getConnectedChargePoints();
-      const stats = {
-        totalConnected: connected.length,
-        connectedDevices: connected,
-        serverUptime: process.uptime(),
-        serverStatus: 'running'
+      const { status, chargePointId, limit = 100 } = req.query;
+      
+      let query = {};
+      if (status) query.status = status;
+      if (chargePointId) query.chargePointId = chargePointId;
+
+      const transactions = await db.collection('ocppTransactions')
+        .find(query)
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .toArray();
+
+      res.json(transactions);
+    } catch (error) {
+      console.error('❌ Error fetching transactions:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get active transactions
+  app.get('/api/cms/transactions/active', async (req, res) => {
+    try {
+      const activeTransactions = await ocppCMS.getActiveTransactions();
+      res.json(activeTransactions);
+    } catch (error) {
+      console.error('❌ Error fetching active transactions:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get transaction by ID
+  app.get('/api/cms/transactions/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const transaction = await ocppCMS.getTransaction(parseInt(id));
+      
+      if (!transaction) {
+        return res.status(404).json({ error: 'Transaction not found' });
+      }
+
+      res.json(transaction);
+    } catch (error) {
+      console.error('❌ Error fetching transaction:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== METER VALUES ENDPOINTS ==========
+  
+  // Get meter values
+  app.get('/api/cms/meter-values', async (req, res) => {
+    try {
+      const { chargePointId, transactionId, limit = 100 } = req.query;
+      
+      let query = {};
+      if (chargePointId) query.chargePointId = chargePointId;
+      if (transactionId) query.transactionId = parseInt(transactionId);
+
+      const meterValues = await db.collection('ocppMeterValues')
+        .find(query)
+        .sort({ timestamp: -1 })
+        .limit(parseInt(limit))
+        .toArray();
+
+      res.json(meterValues);
+    } catch (error) {
+      console.error('❌ Error fetching meter values:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get meter values for specific charge point
+  app.get('/api/cms/meter-values/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { limit = 100, from, to } = req.query;
+      
+      let query = { chargePointId };
+      
+      if (from || to) {
+        query.timestamp = {};
+        if (from) query.timestamp.$gte = new Date(from);
+        if (to) query.timestamp.$lte = new Date(to);
+      }
+
+      const meterValues = await db.collection('ocppMeterValues')
+        .find(query)
+        .sort({ timestamp: -1 })
+        .limit(parseInt(limit))
+        .toArray();
+
+      res.json(meterValues);
+    } catch (error) {
+      console.error('❌ Error fetching meter values:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== LOGGING ENDPOINTS ==========
+  
+  // Get OCPP logs
+  app.get('/api/cms/logs', async (req, res) => {
+    try {
+      const { chargePointId, limit = 100 } = req.query;
+      const logs = await ocppCMS.getLogs(chargePointId, parseInt(limit));
+      res.json(logs);
+    } catch (error) {
+      console.error('❌ Error fetching logs:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get logs for specific charge point
+  app.get('/api/cms/logs/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { limit = 100 } = req.query;
+      const logs = await ocppCMS.getLogs(chargePointId, parseInt(limit));
+      res.json(logs);
+    } catch (error) {
+      console.error('❌ Error fetching charge point logs:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== WEBSOCKET STATUS ENDPOINT ==========
+  
+  // Get WebSocket server status
+  app.get('/api/cms/websocket/status', (req, res) => {
+    try {
+      const connectedChargePoints = ocppWebSocketServer.getConnectedChargePoints();
+      
+      res.json({
+        isRunning: !!ocppWebSocketServer,
+        port: 'Shared with HTTP server',
+        path: '/ocpp',
+        connectedChargePoints: connectedChargePoints.length,
+        chargePoints: connectedChargePoints
+      });
+    } catch (error) {
+      console.error('❌ Error getting WebSocket status:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Restart WebSocket server
+  app.post('/api/cms/websocket/restart', async (req, res) => {
+    try {
+      console.log('🔄 Restarting OCPP WebSocket Server...');
+      
+      await ocppWebSocketServer.stop();
+      ocppWebSocketServer = new OCPPWebSocketServer(db, server); // Pass HTTP server instance
+      await ocppWebSocketServer.initialize();
+      
+      res.json({ message: 'WebSocket server restarted successfully' });
+    } catch (error) {
+      console.error('❌ Error restarting WebSocket server:', error);
+      res.status(500).json({ error: 'Failed to restart WebSocket server' });
+    }
+  });
+
+  // ========== CHARGER MANAGEMENT ENDPOINTS ==========
+  app.get('/api/chargers', async (req, res) => {
+    try {
+      console.log("📤 GET /api/chargers - Fetching available chargers");
+      
+      // Get all chargers (no reservation filtering)
+      const allChargers = await chargers.find({}).toArray();
+
+      console.log(`✅ Found ${allChargers.length} chargers`);
+      res.json(allChargers);
+    } catch (err) {
+      console.error('❌ Error fetching chargers:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // ========== ORDER MANAGEMENT ENDPOINTS ==========
+  // Save order (simplified without reservations)
+  app.post('/api/save-order', async (req, res) => {
+    try {
+      const { charger, firstName, lastName, email, phone, timestamp } = req.body;
+
+      if (!charger?.chargerId || !firstName || !lastName || !email || !phone) {
+        return res.status(400).json({ error: "Missing required information" });
+      }
+
+      const chargerDoc = await chargers.findOne({ chargerId: charger.chargerId });
+      if (!chargerDoc) {
+        return res.status(400).json({ error: "Charger not found" });
+      }
+
+      const orderData = {
+        charger,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        timestamp: timestamp || new Date().toISOString(),
+        paid: false,
+        paymentStatus: 'pending',
+        chargingStarted: false,
+        chargingCompleted: false,
+        createdAt: new Date(),
+        status: 'pending'
       };
-      
-      res.json({
-        success: true,
-        data: stats
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+
+      const result = await orders.insertOne(orderData);
+      console.log(`✅ Order saved with ID: ${result.insertedId}, Status: pending`);
+      res.status(200).json({ message: "Order saved", id: result.insertedId });
+    } catch (err) {
+      console.error('❌ Error saving order:', err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
-  return router;
-}
+  app.get('/api/get-order/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!ObjectId.isValid(id)) {
+        console.error(`❌ Invalid order ID format: ${id}`);
+        return res.status(400).json({ error: "Invalid ID" });
+      }
 
-// Main server initialization
-async function startServer() {
-  try {
-    console.log('🔄 Initializing EV Charging Backend...');
-    
-    // Initialize database
-    await initializeDatabase();
-    
-    // Get collections
-    const chargers = db.collection('chargers');
-    const orders = db.collection('orders');
-    const chargingStatus = db.collection('chargingStatus');
-    const ownerSessions = db.collection('ownerSessions');
+      const order = await orders.findOne({ _id: new ObjectId(id) });
+      if (!order) {
+        console.error(`❌ Order not found: ${id}`);
+        return res.status(404).json({ error: "Order not found" });
+      }
 
-    // Create HTTP server
-    const server = http.createServer(app);
-    
-    // Initialize OCPP services
-    ocppCMS = new OCPPCMSConfig(db);
-    console.log('✅ OCPP CMS initialized');
-
-    // Initialize OCPP WebSocket Server with HTTP server
-    ocppWebSocketServer = new OCPPWebSocketServer(db, server);
-    await ocppWebSocketServer.initialize();
-    console.log(`✅ OCPP WebSocket Server initialized`);
-
-    // Initialize PCB Integration
-    pcbIntegration = new OCPPPCBIntegration(db);
-    console.log('✅ PCB Integration initialized');
-
-    // Make services available to app
-    app.locals.db = db;
-    app.locals.collections = { chargers, orders, chargingStatus, ownerSessions };
-    app.locals.services = { ocppWebSocketServer, ocppCMS, pcbIntegration };
-    app.locals.utils = { customFetch };
-
-    // ========== BASIC ROUTES ==========
-    
-    // Health check
-    app.get('/health', (req, res) => {
-      res.json({ 
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        services: {
-          database: 'connected',
-          ocppServer: ocppWebSocketServer ? 'running' : 'stopped',
-          pcbIntegration: pcbIntegration ? 'initialized' : 'not initialized'
-        },
-        ocppServer: {
-          connected: ocppWebSocketServer ? true : false,
-          connectedDevices: ocppWebSocketServer ? ocppWebSocketServer.getConnectedChargePoints().length : 0
-        }
+      console.log(`✅ Order retrieved: ${id}`, {
+        status: order.status,
+        paid: order.paid,
+        paymentStatus: order.paymentStatus,
+        molliePaymentId: order.molliePaymentId,
+        paidAt: order.paidAt
       });
-    });
-    
-    // Root route
-    app.get('/', (req, res) => {
-      res.json({
-        message: '🚀 EV Charging Backend API',
-        version: '2.0.0',
-        ocppWebSocket: '/ocpp',
-        endpoints: {
-          health: '/health',
-          chargers: '/api/chargers',
-          orders: '/api/orders',
-          payments: '/api/payments',
-          charging: '/api/charging',
-          cms: '/api/cms/*',
-          ocpp: '/api/ocpp/*',
-          pcb: '/api/pcb/*',
-          external: '/api/external/*',
-          admin: '/api/admin/*'
-        }
-      });
-    });
 
-    // ========== CHARGER MANAGEMENT ENDPOINTS ==========
-    
-    app.get('/api/chargers', async (req, res) => {
-      try {
-        console.log("📤 GET /api/chargers - Fetching available chargers");
-        const allChargers = await chargers.find({}).toArray();
-        console.log(`✅ Found ${allChargers.length} chargers`);
-        res.json(allChargers);
-      } catch (err) {
-        console.error('❌ Error fetching chargers:', err);
-        res.status(500).json({ error: "Internal error" });
+      res.json(order);
+    } catch (err) {
+      console.error('❌ Error fetching order:', err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Initiate refund endpoint
+  app.post('/api/initiate-refund', async (req, res) => {
+    try {
+      const { orderId } = req.body;
+
+      if (!orderId || !ObjectId.isValid(orderId)) {
+        return res.status(400).json({ error: "Valid Order ID is required" });
       }
-    });
 
-    // ========== ORDER MANAGEMENT ENDPOINTS ==========
-    
-    // Save order
-    app.post('/api/orders', async (req, res) => {
-      try {
-        const { charger, firstName, lastName, email, phone, timestamp } = req.body;
-
-        if (!charger?.chargerId || !firstName || !lastName || !email || !phone) {
-          return res.status(400).json({ error: "Missing required information" });
-        }
-
-        const chargerDoc = await chargers.findOne({ chargerId: charger.chargerId });
-        if (!chargerDoc) {
-          return res.status(400).json({ error: "Charger not found" });
-        }
-
-        const orderData = {
-          charger,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          email: email.trim(),
-          phone: phone.trim(),
-          timestamp: timestamp || new Date().toISOString(),
-          paid: false,
-          paymentStatus: 'pending',
-          chargingStarted: false,
-          chargingCompleted: false,
-          createdAt: new Date(),
-          status: 'pending'
-        };
-
-        const result = await orders.insertOne(orderData);
-        console.log(`✅ Order saved with ID: ${result.insertedId}, Status: pending`);
-        res.status(200).json({ message: "Order saved", id: result.insertedId });
-      } catch (err) {
-        console.error('❌ Error saving order:', err);
-        res.status(500).json({ error: "Internal server error" });
+      // Get order details
+      const order = await orders.findOne({ _id: new ObjectId(orderId) });
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
       }
-    });
 
-    // Get order
-    app.get('/api/orders/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        if (!ObjectId.isValid(id)) {
-          console.error(`❌ Invalid order ID format: ${id}`);
-          return res.status(400).json({ error: "Invalid ID" });
-        }
-
-        const order = await orders.findOne({ _id: new ObjectId(id) });
-        if (!order) {
-          console.error(`❌ Order not found: ${id}`);
-          return res.status(404).json({ error: "Order not found" });
-        }
-
-        console.log(`✅ Order retrieved: ${id}`, {
-          status: order.status,
-          paid: order.paid,
-          paymentStatus: order.paymentStatus
-        });
-
-        res.json(order);
-      } catch (err) {
-        console.error('❌ Error fetching order:', err);
-        res.status(500).json({ error: "Internal server error" });
-      }
-    });
-
-    // Get all orders (admin)
-    app.get('/api/orders', async (req, res) => {
-      try {
-        const allOrders = await orders.find({}).sort({ createdAt: -1 }).toArray();
-        res.json(allOrders);
-      } catch (err) {
-        console.error('❌ Error fetching orders:', err);
-        res.status(500).json({ error: "Internal error" });
-      }
-    });
-
-    // ========== PAYMENT ENDPOINTS ==========
-    
-    // Payment creation notification
-    app.post('/api/payment-created', async (req, res) => {
-      try {
-        const { orderId, molliePaymentId, paymentStatus, amount, customerInfo, timestamp } = req.body;
-        
-        if (!orderId || !ObjectId.isValid(orderId)) {
-          return res.status(400).json({ error: "Invalid order ID" });
-        }
-
-        const updateData = {
-          molliePaymentId,
-          paymentStatus: paymentStatus || 'open',
-          paymentAmount: amount,
-          paymentCreatedAt: new Date(timestamp),
-          updatedAt: new Date()
-        };
-
-        await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
-        console.log(`✅ Payment creation recorded for order: ${orderId}, Mollie ID: ${molliePaymentId}`);
-        
-        res.json({ message: "Payment creation recorded" });
-      } catch (err) {
-        console.error('❌ Error recording payment creation:', err);
-        res.status(500).json({ error: "Internal error" });
-      }
-    });
-
-    // Mollie webhook
-    app.post('/api/mollie-webhook', async (req, res) => {
-      try {
-        const { id: paymentId } = req.body;
-        
-        if (!paymentId) {
-          console.error("❌ Mollie webhook: Missing payment ID");
-          return res.status(400).json({ error: "Missing payment ID" });
-        }
-
-        console.log(`📥 Mollie webhook received for payment: ${paymentId}`);
-
-        const MOLLIE_API_KEY = process.env.MOLLIE_API_KEY || "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
-
-        // Fetch payment details from Mollie
-        const response = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
-          headers: {
-            "Authorization": `Bearer ${MOLLIE_API_KEY}`,
-            "Content-Type": "application/json"
-          }
-        });
-
-        if (!response.ok) {
-          console.error(`❌ Failed to fetch payment from Mollie: ${response.status}`);
-          return res.status(400).json({ error: "Failed to fetch payment data" });
-        }
-
-        const paymentData = await response.json();
-        console.log(`📋 Mollie payment data:`, {
-          id: paymentData.id,
-          status: paymentData.status,
-          method: paymentData.method,
-          amount: paymentData.amount,
-          metadata: paymentData.metadata
-        });
-
-        // Update order with payment information
-        if (paymentData?.metadata?.orderId) {
-          const orderId = paymentData.metadata.orderId;
-
-          const updateData = {
-            paid: paymentData.status === 'paid',
-            paymentStatus: paymentData.status,
-            paymentId,
-            paymentMethod: paymentData.method,
-            paidAt: paymentData.status === 'paid' && paymentData.paidAt ? new Date(paymentData.paidAt) : null,
-            status: paymentData.status === 'paid' ? 'paid' : 
-                   (paymentData.status === 'failed' || paymentData.status === 'cancelled' || paymentData.status === 'expired') ? paymentData.status : 'pending',
-            mollieWebhookAt: new Date(),
+      // Mark order for refund
+      await orders.updateOne(
+        { _id: new ObjectId(orderId) },
+        { 
+          $set: { 
+            refundRequested: true,
+            refundRequestedAt: new Date(),
+            status: 'refund_requested',
             updatedAt: new Date()
-          };
-
-          const result = await orders.updateOne(
-            { _id: new ObjectId(orderId) },
-            { $set: updateData }
-          );
-
-          if (result.matchedCount > 0) {
-            console.log(`✅ Order ${orderId} updated with payment status: ${paymentData.status}`);
-          } else {
-            console.error(`❌ Order ${orderId} not found for payment update`);
-          }
-        } else {
-          console.error("❌ No order ID found in payment metadata");
+          } 
         }
+      );
 
-        res.status(200).send("OK");
-      } catch (err) {
-        console.error("❌ Mollie webhook processing failed:", err);
-        res.status(500).json({ error: "Webhook processing failed" });
+      console.log(`✅ Refund initiated for order ${orderId}, payment ID: ${order.molliePaymentId || order.paymentId}`);
+      
+      res.json({ 
+        message: "Refund initiated", 
+        orderId,
+        paymentId: order.molliePaymentId || order.paymentId
+      });
+
+    } catch (error) {
+      console.error('❌ Error initiating refund:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ========== PAYMENT ENDPOINTS ==========
+  // Payment creation notification from frontend
+  app.post('/api/payment-created', async (req, res) => {
+    try {
+      const { orderId, molliePaymentId, paymentStatus, amount, customerInfo, timestamp } = req.body;
+      
+      if (!orderId || !ObjectId.isValid(orderId)) {
+        return res.status(400).json({ error: "Invalid order ID" });
       }
-    });
 
-    // Manual payment status update
-    app.post('/api/orders/:orderId/payment-status', async (req, res) => {
-      try {
-        const orderId = req.params.orderId;
-        const { paymentStatus, paid } = req.body;
-        
-        if (!ObjectId.isValid(orderId)) {
-          return res.status(400).json({ error: "Invalid order ID" });
+      const updateData = {
+        molliePaymentId,
+        paymentStatus: paymentStatus || 'open',
+        paymentAmount: amount,
+        paymentCreatedAt: new Date(timestamp),
+        updatedAt: new Date()
+      };
+
+      await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+      console.log(`✅ Payment creation recorded for order: ${orderId}, Mollie ID: ${molliePaymentId}`);
+      
+      res.json({ message: "Payment creation recorded" });
+    } catch (err) {
+      console.error('❌ Error recording payment creation:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // Generic payment webhook (for manual updates)
+  app.post('/api/payment-webhook', async (req, res) => {
+    try {
+      const { orderId, paymentStatus, paymentId, paymentMethod } = req.body;
+      if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid order ID" });
+
+      const updateData = {
+        paid: paymentStatus === 'paid',
+        paymentStatus,
+        paymentId,
+        paymentMethod,
+        paidAt: paymentStatus === 'paid' ? new Date() : null,
+        status: paymentStatus === 'paid' ? 'paid' : (paymentStatus === 'failed' || paymentStatus === 'cancelled' ? paymentStatus : 'pending'),
+        updatedAt: new Date()
+      };
+
+      await orders.updateOne({ _id: new ObjectId(orderId) }, { $set: updateData });
+      console.log(`✅ Payment webhook updated order: ${orderId}, Status: ${paymentStatus}`);
+      res.json({ message: "Webhook updated" });
+    } catch (err) {
+      console.error('❌ Error processing payment webhook:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // Mollie webhook - simplified without reservations
+  app.post('/api/mollie-webhook', async (req, res) => {
+    try {
+      const { id: paymentId } = req.body;
+      
+      if (!paymentId) {
+        console.error("❌ Mollie webhook: Missing payment ID");
+        return res.status(400).json({ error: "Missing payment ID" });
+      }
+
+      console.log(`📥 Mollie webhook received for payment: ${paymentId}`);
+
+      const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+
+      // Fetch payment details from Mollie
+      const response = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+        headers: {
+          "Authorization": `Bearer ${MOLLIE_API_KEY}`,
+          "Content-Type": "application/json"
         }
-        
+      });
+
+      if (!response.ok) {
+        console.error(`❌ Failed to fetch payment from Mollie: ${response.status}`);
+        return res.status(400).json({ error: "Failed to fetch payment data" });
+      }
+
+      const paymentData = await response.json();
+      console.log(`📋 Mollie payment data:`, {
+        id: paymentData.id,
+        status: paymentData.status,
+        method: paymentData.method,
+        amount: paymentData.amount,
+        metadata: paymentData.metadata
+      });
+
+      // Update order with payment information
+      if (paymentData?.metadata?.orderId) {
+        const orderId = paymentData.metadata.orderId;
+
         const updateData = {
-          paid: paid === true || paymentStatus === 'paid',
-          paymentStatus: paymentStatus || 'paid',
-          status: paymentStatus === 'paid' ? 'paid' : paymentStatus,
-          paidAt: (paid === true || paymentStatus === 'paid') ? new Date() : null,
-          manuallyUpdatedAt: new Date(),
+          paid: paymentData.status === 'paid',
+          paymentStatus: paymentData.status,
+          paymentId,
+          paymentMethod: paymentData.method,
+          paidAt: paymentData.status === 'paid' && paymentData.paidAt ? new Date(paymentData.paidAt) : null,
+          status: paymentData.status === 'paid' ? 'paid' : 
+                 (paymentData.status === 'failed' || paymentData.status === 'cancelled' || paymentData.status === 'expired') ? paymentData.status : 'pending',
+          mollieWebhookAt: new Date(),
           updatedAt: new Date()
         };
-        
+
         const result = await orders.updateOne(
           { _id: new ObjectId(orderId) },
           { $set: updateData }
         );
-        
-        if (result.matchedCount === 0) {
-          return res.status(404).json({ error: "Order not found" });
-        }
-        
-        console.log(`✅ Manual payment status update for order: ${orderId}`, updateData);
-        res.json({ message: "Payment status updated", updateData });
-        
-      } catch (error) {
-        console.error("❌ Error updating payment status:", error);
-        res.status(500).json({ error: "Internal server error" });
-      }
-    });
 
-    // ========== CHARGING CONTROL ENDPOINTS ==========
-    
-    // Enhanced start charging with ESP device messaging
-    app.post('/api/charging/start/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid order ID" });
-
-        // Check if order exists and payment is confirmed
-        const order = await orders.findOne({ _id: new ObjectId(id) });
-        if (!order) {
-          console.error(`❌ Order not found for charging start: ${id}`);
-          return res.status(404).json({ error: "Order not found" });
-        }
-
-        // Enhanced payment check
-        const isPaymentConfirmed = order.paid === true || 
-                                  order.paymentStatus === 'paid' || 
-                                  order.status === 'paid';
-
-        if (!isPaymentConfirmed) {
-          console.error(`❌ Charging start denied - Payment not confirmed. Order: ${id}`);
-          return res.status(400).json({ 
-            error: "Payment not confirmed", 
-            currentStatus: order.paymentStatus || order.status,
-            paid: order.paid
+        if (result.matchedCount > 0) {
+          console.log(`✅ Order ${orderId} updated with payment status: ${paymentData.status}`, {
+            paid: updateData.paid,
+            paymentStatus: updateData.paymentStatus,
+            status: updateData.status
           });
-        }
-
-        // Try OCPP remote start and ESP notification
-        let ocppStarted = false;
-        let espNotified = false;
-        
-        if (order.charger && order.charger.chargerId) {
-          try {
-            const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
-            if (chargePointStatus && chargePointStatus.isConnected) {
-              console.log('🔌 Attempting OCPP remote start...');
-              
-              // Send remote start command to ESP device
-              ocppStarted = await ocppWebSocketServer.remoteStartTransaction(
-                order.charger.chargerId, 
-                id, // Use order ID as authorization tag
-                1   // Connector ID
-              );
-              
-              if (ocppStarted) {
-                console.log(`✅ OCPP remote start successful for order: ${id}`);
-              } else {
-                console.warn(`❌ OCPP remote start failed for order: ${id}`);
-              }
-            } else {
-              console.error(`❌ Charge point not connected: ${order.charger.chargerId}`);
-            }
-          } catch (ocppError) {
-            console.error(`❌ OCPP remote start error: ${ocppError.message}`);
-          }
         } else {
-          console.error(`❌ Charger information missing in order: ${id}`);
+          console.error(`❌ Order ${orderId} not found for payment update`);
         }
-
-        // Notify ESP about charging start
-        try {
-          const notifyResponse = await ocppWebSocketServer.notifyChargingStart(order.charger.chargerId, order);
-          espNotified = notifyResponse.success;
-          console.log(`📡 ESP notification ${espNotified ? 'succeeded' : 'failed'} for order: ${id}`);
-        } catch (notifyError) {
-          console.error(`❌ ESP notification error: ${notifyError.message}`);
-        }
-
-        res.json({
-          success: true,
-          message: 'Charging start process initiated',
-          data: {
-            ocppStarted,
-            espNotified
-          }
-        });
-      } catch (error) {
-        console.error('❌ Error starting charging:', error);
-        res.status(500).json({ error: "Internal server error" });
+      } else {
+        console.error("❌ No order ID found in payment metadata");
       }
-    });
 
-    // Enhanced stop charging with ESP device messaging
-    app.post('/api/charging/stop/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid order ID" });
+      res.status(200).send("OK");
+    } catch (err) {
+      console.error("❌ Mollie webhook processing failed:", err);
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  });
 
-        // Check if order exists
-        const order = await orders.findOne({ _id: new ObjectId(id) });
-        if (!order) {
-          console.error(`❌ Order not found for charging stop: ${id}`);
-          return res.status(404).json({ error: "Order not found" });
-        }
-
-        // Try OCPP remote stop and ESP notification
-        let ocppStopped = false;
-        let espNotified = false;
-        
-        if (order.charger && order.charger.chargerId) {
-          try {
-            const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
-            if (chargePointStatus && chargePointStatus.isConnected) {
-              console.log('🔌 Attempting OCPP remote stop...');
-              
-              // Send remote stop command to ESP device
-              ocppStopped = await ocppWebSocketServer.remoteStopTransaction(
-                order.charger.chargerId, 
-                order.transactionId // Use order transaction ID
-              );
-              
-              if (ocppStopped) {
-                console.log(`✅ OCPP remote stop successful for order: ${id}`);
-              } else {
-                console.warn(`❌ OCPP remote stop failed for order: ${id}`);
-              }
-            } else {
-              console.error(`❌ Charge point not connected: ${order.charger.chargerId}`);
-            }
-          } catch (ocppError) {
-            console.error(`❌ OCPP remote stop error: ${ocppError.message}`);
-          }
-        } else {
-          console.error(`❌ Charger information missing in order: ${id}`);
-        }
-
-        // Notify ESP about charging stop
-        try {
-          const notifyResponse = await ocppWebSocketServer.notifyChargingStop(order.charger.chargerId, order);
-          espNotified = notifyResponse.success;
-          console.log(`📡 ESP notification ${espNotified ? 'succeeded' : 'failed'} for order: ${id}`);
-        } catch (notifyError) {
-          console.error(`❌ ESP notification error: ${notifyError.message}`);
-        }
-
-        res.json({
-          success: true,
-          message: 'Charging stop process initiated',
-          data: {
-            ocppStopped,
-            espNotified
-          }
+  // Direct Mollie payment verification endpoint
+  app.get('/api/verify-mollie-payment/:paymentId', async (req, res) => {
+    try {
+      const { paymentId } = req.params;
+      
+      console.log("🔍 Direct Mollie verification requested for payment:", paymentId);
+      
+      if (!paymentId) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Payment ID is required' 
         });
-      } catch (error) {
-        console.error('❌ Error stopping charging:', error);
-        res.status(500).json({ error: "Internal server error" });
-      }
-    });
-
-    // ========== ADMINISTRATIVE ENDPOINTS ==========
-    
-    // Admin health check
-    app.get('/api/admin/health', (req, res) => {
-      res.json({ 
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        services: {
-          database: db ? 'connected' : 'disconnected',
-          ocppServer: ocppWebSocketServer ? 'running' : 'stopped',
-          pcbIntegration: pcbIntegration ? 'initialized' : 'not initialized'
-        }
-      });
-    });
-
-    // Admin: Get server logs
-    app.get('/api/admin/logs', (req, res) => {
-      // For security, limit log access to admin users only
-      if (!req.user || !req.user.isAdmin) {
-        return res.status(403).json({ error: "Access denied" });
       }
       
-      // Implement log retrieval logic here
+      const MOLLIE_API_KEY = "test_Eh4TB42uTjCdCaDGQaCfJ6f6f995tk";
+      
+      // Verify payment directly with Mollie API
+      const mollieResponse = await customFetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${MOLLIE_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!mollieResponse.ok) {
+        console.error("❌ Mollie API error:", mollieResponse.status);
+        const errorText = await mollieResponse.text();
+        return res.status(mollieResponse.status).json({ 
+          success: false, 
+          error: `Mollie API error: ${errorText}` 
+        });
+      }
+      
+      const paymentData = await mollieResponse.json();
+      console.log("📋 Mollie payment data:", {
+        id: paymentData.id,
+        status: paymentData.status,
+        amount: paymentData.amount
+      });
+      
+      const isPaid = paymentData.status === 'paid';
+      
+      // If payment is confirmed as paid, update our database
+      if (isPaid && paymentData.metadata && paymentData.metadata.orderId) {
+        try {
+          console.log("✅ Payment confirmed paid, updating database...");
+          
+          const updateData = {
+            paid: true,
+            paymentStatus: 'paid',
+            status: 'paid',
+            paidAt: paymentData.paidAt ? new Date(paymentData.paidAt) : new Date(),
+            mollieDirectVerifiedAt: new Date(),
+            updatedAt: new Date()
+          };
+          
+          const updateResult = await orders.updateOne(
+            { _id: new ObjectId(paymentData.metadata.orderId) },
+            { $set: updateData }
+          );
+          
+          console.log("📋 Database update result:", {
+            matchedCount: updateResult.matchedCount,
+            modifiedCount: updateResult.modifiedCount
+          });
+          
+        } catch (dbError) {
+          console.error("❌ Failed to update database:", dbError);
+          // Don't fail the verification if DB update fails
+        }
+      }
+      
       res.json({
         success: true,
-        message: "Log retrieval not implemented",
-        data: [] // Replace with actual log data
+        payment: {
+          id: paymentData.id,
+          status: paymentData.status,
+          amount: paymentData.amount,
+          description: paymentData.description,
+          createdAt: paymentData.createdAt,
+          paidAt: paymentData.paidAt
+        },
+        isPaid: isPaid,
+        status: paymentData.status
       });
-    });
+      
+    } catch (error) {
+      console.error("❌ Direct Mollie verification error:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Internal server error during payment verification' 
+      });
+    }
+  });
 
-    // Admin: Get system metrics
-    app.get('/api/admin/metrics', (req, res) => {
-      // For security, limit metrics access to admin users only
-      if (!req.user || !req.user.isAdmin) {
-        return res.status(403).json({ error: "Access denied" });
+  // Manual payment status update endpoint (for testing/debugging)
+  app.post('/api/update-payment-status/:orderId', async (req, res) => {
+    try {
+      const orderId = req.params.orderId;
+      const { paymentStatus, paid } = req.body;
+      
+      if (!ObjectId.isValid(orderId)) {
+        return res.status(400).json({ error: "Invalid order ID" });
       }
       
-      const metrics = {
-        uptime: process.uptime(),
-        memoryUsage: process.memoryUsage(),
-        cpuUsage: process.cpuUsage(),
-        requestsPerSecond: req.metrics ? req.metrics.requestsPerSecond : 0
+      const updateData = {
+        paid: paid === true || paymentStatus === 'paid',
+        paymentStatus: paymentStatus || 'paid',
+        status: paymentStatus === 'paid' ? 'paid' : paymentStatus,
+        paidAt: (paid === true || paymentStatus === 'paid') ? new Date() : null,
+        manuallyUpdatedAt: new Date(),
+        updatedAt: new Date()
       };
       
-      res.json({
-        success: true,
-        data: metrics
-      });
-    });
-
-    // Admin: Force server shutdown (for maintenance)
-    app.post('/api/admin/shutdown', (req, res) => {
-      // For security, limit shutdown access to admin users only
-      if (!req.user || !req.user.isAdmin) {
-        return res.status(403).json({ error: "Access denied" });
+      const result = await orders.updateOne(
+        { _id: new ObjectId(orderId) },
+        { $set: updateData }
+      );
+      
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ error: "Order not found" });
       }
       
-      res.json({
-        success: true,
-        message: "Shutdown initiated",
-        data: null
-      });
+      console.log(`✅ Manual payment status update for order: ${orderId}`, updateData);
+      res.json({ message: "Payment status updated", updateData });
       
-      // Graceful shutdown after 5 seconds
-      setTimeout(() => {
-        console.log("🔒 Shutting down server for maintenance...");
-        process.exit(0);
-      }, 5000);
-    });
-
-    // Admin: Reload configuration
-    app.post('/api/admin/reload-config', async (req, res) => {
-      // For security, limit config reload access to admin users only
-      if (!req.user || !req.user.isAdmin) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-      
-      try {
-        // Reload environment variables
-        require('dotenv').config();
-        
-        // Reinitialize services with new config
-        await initializeDatabase();
-        ocppCMS = new OCPPCMSConfig(db);
-        ocppWebSocketServer = new OCPPWebSocketServer(db, server);
-        pcbIntegration = new OCPPPCBIntegration(db);
-        
-        res.json({
-          success: true,
-          message: "Configuration reloaded",
-          data: null
-        });
-      } catch (error) {
-        console.error('❌ Error reloading configuration:', error);
-        res.status(500).json({ error: "Internal server error" });
-      }
-    });
-
-    // ========== ERROR HANDLING ==========
-    
-    // 404 Not Found
-    app.use((req, res) => {
-      res.status(404).json({ error: "Not found" });
-    });
-
-    // Global error handler
-    app.use((err, req, res, next) => {
-      console.error('❌ Unhandled error:', err);
+    } catch (error) {
+      console.error("❌ Error updating payment status:", error);
       res.status(500).json({ error: "Internal server error" });
-    });
+    }
+  });
 
-    // Start the server
-    server.listen(PORT, () => {
-      console.log(`🚀 Server is running on http://localhost:${PORT}`);
-    });
+  // ========== ENHANCED CHARGING CONTROL ENDPOINTS ==========
+  
+  // Enhanced start charging with OCPP support and ESP messaging
+  app.post('/api/start-charging/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid order ID" });
 
-  } catch (error) {
-    console.error('❌ Server initialization failed:', error);
-  }
-}
+      // Check if order exists and payment is confirmed
+      const order = await orders.findOne({ _id: new ObjectId(id) });
+      if (!order) {
+        console.error(`❌ Order not found for charging start: ${id}`);
+        return res.status(404).json({ error: "Order not found" });
+      }
 
-// Start the server
-startServer();
+      // Enhanced payment check
+      const isPaymentConfirmed = order.paid === true || 
+                                order.paymentStatus === 'paid' || 
+                                order.status === 'paid';
+
+      if (!isPaymentConfirmed) {
+        console.error(`❌ Charging start denied - Payment not confirmed. Order: ${id}`);
+        return res.status(400).json({ 
+          error: "Payment not confirmed", 
+          currentStatus: order.paymentStatus || order.status,
+          paid: order.paid
+        });
+      }
+
+      // Try OCPP remote start if charge point is connected
+      let ocppStarted = false;
+      let espNotified = false;
+      
+      if (order.charger && order.charger.chargerId) {
+        try {
+          const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
+          if (chargePointStatus && chargePointStatus.isConnected) {
+            console.log('🔌 Attempting OCPP remote start...');
+            
+            // Send remote start command to ESP device
+            ocppStarted = await ocppWebSocketServer.remoteStartTransaction(
+              order.charger.chargerId, 
+              id, // Use order ID as authorization tag
+              1   // Connector ID
+            );
+            
+            if (ocppStarted) {
+              console.log('✅ OCPP remote start successful');
+              
+              // Send custom charging start message to ESP device using the new method
+              try {
+                await ocppWebSocketServer.notifyChargingStart(order.charger.chargerId, order);
+                espNotified = true;
+                console.log('✅ ESP device notified of charging start');
+              } catch (notifyError) {
+                console.error('⚠️ Failed to send start notification to ESP:', notifyError);
+              }
+            } else {
+              console.log('❌ OCPP remote start failed');
+            }
+          } else {
+            console.log('⚠️ Charge point not connected via OCPP, proceeding with manual start');
+          }
+        } catch (ocppError) {
+          console.error('❌ OCPP remote start error:', ocppError);
+        }
+      }
+
+      // Update order to mark charging as started
+      await orders.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            chargingStarted: true,
+            chargingStartedAt: new Date(),
+            status: 'charging',
+            ocppControlled: ocppStarted,
+            espNotified: espNotified,
+            updatedAt: new Date()
+          }
+        }
+      );
+
+      console.log(`✅ Charging started for order: ${id} (OCPP: ${ocppStarted ? 'Yes' : 'No'}, ESP Notified: ${espNotified ? 'Yes' : 'No'})`);
+      
+      res.json({ 
+        message: "Charging started", 
+        orderId: id,
+        ocppControlled: ocppStarted,
+        espNotified: espNotified
+      });
+    } catch (err) {
+      console.error('❌ Error starting charging:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // Enhanced charging status endpoint with ESP stop notification
+  app.post('/api/charging-status', async (req, res) => {
+    try {
+      const { orderId, startTime, endTime, durationSeconds, amountPaid, powerKW, stopReason } = req.body;
+      if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid data" });
+
+      const order = await orders.findOne({ _id: new ObjectId(orderId) });
+      if (!order) return res.status(404).json({ error: "Order not found" });
+
+      // Send stop notification to ESP device
+      let espStopNotified = false;
+      if (order.charger && order.charger.chargerId) {
+        try {
+          const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
+          if (chargePointStatus && chargePointStatus.isConnected) {
+            const chargingData = {
+              durationSeconds,
+              amountPaid: parseFloat(amountPaid) || 0,
+              powerKW: parseFloat(powerKW) || 0,
+              stopReason: stopReason || 'user_requested'
+            };
+            
+            await ocppWebSocketServer.notifyChargingStop(order.charger.chargerId, order, chargingData);
+            espStopNotified = true;
+            console.log('✅ ESP device notified of charging stop');
+          }
+        } catch (notifyError) {
+          console.error('⚠️ Failed to send stop notification to ESP:', notifyError);
+        }
+      }
+
+      const chargingData = {
+        orderId: new ObjectId(orderId),
+        startTime: new Date(startTime),
+        endTime: endTime ? new Date(endTime) : new Date(),
+        durationSeconds,
+        amountPaid: parseFloat(amountPaid) || 0,
+        powerKW: parseFloat(powerKW) || 0,
+        userPhone: order.phone,
+        userEmail: order.email,
+        userName: `${order.firstName} ${order.lastName}`,
+        charger: order.charger,
+        stopReason: stopReason || 'user_requested',
+        espStopNotified: espStopNotified,
+        createdAt: new Date()
+      };
+
+      const result = await chargingStatus.insertOne(chargingData);
+
+      await orders.updateOne(
+        { _id: new ObjectId(orderId) },
+        {
+          $set: {
+            chargingCompleted: true,
+            chargingCompletedAt: new Date(),
+            status: 'completed',
+            finalAmount: parseFloat(amountPaid) || 0,
+            espStopNotified: espStopNotified,
+            updatedAt: new Date()
+          }
+        }
+      );
+
+      console.log(`✅ Charging session completed for order: ${orderId} (ESP Stop Notified: ${espStopNotified ? 'Yes' : 'No'})`);
+      res.status(200).json({ 
+        message: "Charging session saved", 
+        id: result.insertedId,
+        espStopNotified: espStopNotified 
+      });
+    } catch (err) {
+      console.error('❌ Error saving charging session:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // New endpoint for manual ESP device control
+  app.post('/api/esp-control/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { command, data } = req.body;
+
+      if (!command) {
+        return res.status(400).json({ error: 'Command is required' });
+      }
+
+      const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(chargePointId);
+      if (!chargePointStatus || !chargePointStatus.isConnected) {
+        return res.status(404).json({ error: 'ESP device not connected' });
+      }
+
+      let response;
+      switch (command.toLowerCase()) {
+        case 'start':
+          response = await ocppWebSocketServer.sendCustomMessage(chargePointId, 'ChargingStart', {
+            command: 'START_CHARGING',
+            ...data,
+            timestamp: new Date().toISOString()
+          });
+          break;
+        
+        case 'stop':
+          response = await ocppWebSocketServer.sendCustomMessage(chargePointId, 'ChargingStop', {
+            command: 'STOP_CHARGING',
+            ...data,
+            timestamp: new Date().toISOString()
+          });
+          break;
+        
+        case 'status':
+          response = await ocppWebSocketServer.sendCustomMessage(chargePointId, 'StatusRequest', {
+            command: 'GET_STATUS',
+            timestamp: new Date().toISOString()
+          });
+          break;
+        
+        default:
+          return res.status(400).json({ error: 'Invalid command' });
+      }
+
+      res.json({ 
+        message: `Command ${command} sent to ESP device`, 
+        chargePointId,
+        response 
+      });
+    } catch (error) {
+      console.error('❌ ESP control error:', error);
+      res.status(500).json({ error: 'Failed to send command to ESP device' });
+    }
+  });
+
+  // Endpoint to get ESP device status
+  app.get('/api/esp-status/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      
+      const status = await ocppWebSocketServer.getChargePointStatus(chargePointId);
+      
+      if (!status) {
+        return res.status(404).json({ error: 'ESP device not found' });
+      }
+      
+      res.json({
+        chargePointId,
+        isConnected: status.isConnected,
+        lastHeartbeat: status.lastHeartbeat,
+        status: status.status,
+        connectors: status.connectors,
+        deviceInfo: {
+          vendor: status.vendor,
+          model: status.model,
+          firmwareVersion: status.firmwareVersion
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error getting ESP status:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Webhook endpoint for ESP device to report charging status
+  app.post('/api/esp-webhook/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { event, data, timestamp } = req.body;
+
+      console.log(`📥 ESP webhook from ${chargePointId}:`, { event, data });
+
+      // Log the event
+      await db.collection('espEvents').insertOne({
+        chargePointId,
+        event,
+        data,
+        timestamp: timestamp ? new Date(timestamp) : new Date(),
+        receivedAt: new Date()
+      });
+
+      // Handle different events
+      switch (event) {
+        case 'charging_started':
+          console.log(`✅ ESP confirmed charging started for order: ${data.orderId}`);
+          if (data.orderId && ObjectId.isValid(data.orderId)) {
+            await orders.updateOne(
+              { _id: new ObjectId(data.orderId) },
+              {
+                $set: {
+                  espConfirmedStart: true,
+                  espStartConfirmedAt: new Date(),
+                  updatedAt: new Date()
+                }
+              }
+            );
+          }
+          break;
+
+        case 'charging_stopped':
+          console.log(`✅ ESP confirmed charging stopped for order: ${data.orderId}`);
+          if (data.orderId && ObjectId.isValid(data.orderId)) {
+            await orders.updateOne(
+              { _id: new ObjectId(data.orderId) },
+              {
+                $set: {
+                  espConfirmedStop: true,
+                  espStopConfirmedAt: new Date(),
+                  actualDuration: data.duration,
+                  actualPowerDelivered: data.powerDelivered,
+                  updatedAt: new Date()
+                }
+              }
+            );
+          }
+          break;
+
+        case 'error':
+          console.error(`❌ ESP error reported: ${data.message}`);
+          break;
+
+        case 'status_update':
+          console.log(`📊 ESP status update: ${data.status}`);
+          break;
+      }
+
+      res.json({ message: 'Webhook received', event, timestamp: new Date() });
+    } catch (error) {
+      console.error('❌ ESP webhook error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== OWNER SESSION ENDPOINTS ==========
+  app.post('/api/create-owner-session', async (req, res) => {
+    try {
+      const { charger, isOwner, timestamp } = req.body;
+      
+      const ownerSession = {
+        charger,
+        isOwner: true,
+        timestamp: timestamp || new Date().toISOString(),
+        sessionType: 'owner',
+        paid: true,
+        paymentStatus: 'owner_session',
+        createdAt: new Date(),
+        status: 'active'
+      };
+      
+      const result = await ownerSessions.insertOne(ownerSession);
+      console.log(`✅ Owner session created: ${result.insertedId}`);
+      
+      res.json({ 
+        message: "Owner session created", 
+        sessionId: result.insertedId,
+        session: ownerSession 
+      });
+    } catch (error) {
+      console.error('❌ Error creating owner session:', error);
+      res.status(500).json({ error: "Failed to create owner session" });
+    }
+  });
+
+  app.get('/api/get-owner-session/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "Invalid session ID" });
+      }
+      
+      const ownerSession = await ownerSessions.findOne({ _id: new ObjectId(id) });
+      if (!ownerSession) {
+        return res.status(404).json({ error: "Owner session not found" });
+      }
+      
+      res.json(ownerSession);
+    } catch (error) {
+      console.error('❌ Error fetching owner session:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post('/api/start-owner-charging/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "Invalid session ID" });
+      }
+      
+      const updateResult = await ownerSessions.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            chargingStarted: true,
+            chargingStartedAt: new Date(),
+            status: 'charging',
+            updatedAt: new Date()
+          }
+        }
+      );
+      
+      if (updateResult.matchedCount === 0) {
+        return res.status(404).json({ error: "Owner session not found" });
+      }
+      
+      console.log(`✅ Owner charging started for session: ${id}`);
+      res.json({ message: "Owner charging started", sessionId: id });
+    } catch (error) {
+      console.error('❌ Error starting owner charging:', error);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  app.post('/api/owner-charging-status', async (req, res) => {
+    try {
+      const { sessionId, startTime, endTime, durationSeconds, amountPaid, powerKW, userInfo } = req.body;
+      
+      const chargingData = {
+        sessionId: sessionId ? new ObjectId(sessionId) : null,
+        sessionType: 'owner',
+        startTime: new Date(startTime),
+        endTime: endTime ? new Date(endTime) : new Date(),
+        durationSeconds,
+        amountPaid: 0, // Owner sessions are free
+        powerKW: parseFloat(powerKW) || 0,
+        isOwner: true,
+        createdAt: new Date()
+      };
+      
+      const result = await chargingStatus.insertOne(chargingData);
+      
+      // Update owner session
+      if (sessionId && ObjectId.isValid(sessionId)) {
+        await ownerSessions.updateOne(
+          { _id: new ObjectId(sessionId) },
+          {
+            $set: {
+              chargingCompleted: true,
+              chargingCompletedAt: new Date(),
+              status: 'completed',
+              updatedAt: new Date()
+            }
+          }
+        );
+      }
+      
+      console.log(`✅ Owner charging session completed: ${sessionId}`);
+      res.json({ message: "Owner charging session saved", id: result.insertedId });
+    } catch (error) {
+      console.error('❌ Error saving owner charging session:', error);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // ========== DASHBOARD/STATISTICS ENDPOINTS ==========
+  
+  // Get CMS dashboard data
+  app.get('/api/cms/dashboard', async (req, res) => {
+    try {
+      const totalChargePoints = await db.collection('chargePoints').countDocuments();
+      const connectedChargePoints = ocppWebSocketServer.getConnectedChargePoints().length;
+      const activeTransactions = await db.collection('ocppTransactions').countDocuments({ status: 'active' });
+      const totalTransactions = await db.collection('ocppTransactions').countDocuments();
+      const totalOrders = await orders.countDocuments();
+      const paidOrders = await orders.countDocuments({ paid: true });
+
+      // Get recent transactions
+      const recentTransactions = await db.collection('ocppTransactions')
+        .find({})
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .toArray();
+
+      // Get charge point statuses
+      const chargePointStatuses = await db.collection('chargePoints')
+        .aggregate([
+          { $group: { _id: '$status', count: { $sum: 1 } } }
+        ])
+        .toArray();
+
+      res.json({
+        statistics: {
+          totalChargePoints,
+          connectedChargePoints,
+          activeTransactions,
+          totalTransactions,
+          totalOrders,
+          paidOrders,
+          connectionRate: totalChargePoints > 0 ? (connectedChargePoints / totalChargePoints * 100).toFixed(1) : 0
+        },
+        recentTransactions,
+        chargePointStatuses,
+        lastUpdated: new Date()
+      });
+    } catch (error) {
+      console.error('❌ Error fetching dashboard data:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== ADMIN ENDPOINTS ==========
+  app.get('/api/orders', async (req, res) => {
+    try {
+      const allOrders = await orders.find({}).sort({ createdAt: -1 }).toArray();
+      res.json(allOrders);
+    } catch (err) {
+      console.error('❌ Error fetching orders:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  app.get('/api/charging-sessions', async (req, res) => {
+    try {
+      const sessions = await chargingStatus.find({}).sort({ createdAt: -1 }).toArray();
+      res.json(sessions);
+    } catch (err) {
+      console.error('❌ Error fetching charging sessions:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  app.get('/api/charging-sessions/:orderId', async (req, res) => {
+    try {
+      const orderId = req.params.orderId;
+      if (!ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const sessions = await chargingStatus.find({ orderId: new ObjectId(orderId) }).toArray();
+      res.json(sessions);
+    } catch (err) {
+      console.error('❌ Error fetching charging sessions for order:', err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // ========== OCPP API ENDPOINTS ==========
+  app.get('/api/ocpp/charge-points', (req, res) => {
+    const connectedChargePoints = ocppWebSocketServer.getConnectedChargePoints();
+    res.json({ chargePoints: connectedChargePoints });
+  });
+
+  app.get('/api/ocpp/status/:chargePointId', (req, res) => {
+    const { chargePointId } = req.params;
+    const status = ocppWebSocketServer.getChargePointStatus(chargePointId);
+    
+    if (!status) {
+      return res.status(404).json({ error: 'Charge point not connected' });
+    }
+    
+    res.json(status);
+  });
+
+  app.get('/api/ocpp/status', (req, res) => {
+    const allStatuses = ocppWebSocketServer.getAllChargePointStatuses();
+    res.json(allStatuses);
+  });
+
+  // Remote control endpoints
+  app.post('/api/ocpp/remote-start/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { idTag, connectorId } = req.body;
+
+      if (!idTag) {
+        return res.status(400).json({ error: 'idTag is required' });
+      }
+
+      const messageId = await ocppWebSocketServer.remoteStartTransaction(chargePointId, idTag, connectorId);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Remote start command sent', messageId });
+    } catch (error) {
+      console.error('❌ Remote start error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/ocpp/remote-stop/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { transactionId } = req.body;
+
+      if (!transactionId) {
+        return res.status(400).json({ error: 'transactionId is required' });
+      }
+
+      const messageId = await ocppWebSocketServer.remoteStopTransaction(chargePointId, transactionId);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Remote stop command sent', messageId });
+    } catch (error) {
+      console.error('❌ Remote stop error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/ocpp/unlock/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { connectorId } = req.body;
+
+      const messageId = await ocppWebSocketServer.unlockConnector(chargePointId, connectorId);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Unlock command sent', messageId });
+    } catch (error) {
+      console.error('❌ Unlock error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/ocpp/reset/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const { type } = req.body;
+
+      const messageId = await ocppWebSocketServer.resetChargePoint(chargePointId, type);
+      
+      if (!messageId) {
+        return res.status(400).json({ error: 'Charge point not connected' });
+      }
+
+      res.json({ message: 'Reset command sent', messageId });
+    } catch (error) {
+      console.error('❌ Reset error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get OCPP transactions
+  app.get('/api/ocpp/transactions', async (req, res) => {
+    try {
+      const transactions = await db.collection('ocppTransactions')
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
+      
+      res.json(transactions);
+    } catch (error) {
+      console.error('❌ Error fetching OCPP transactions:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get meter values
+  app.get('/api/ocpp/meter-values/:chargePointId', async (req, res) => {
+    try {
+      const { chargePointId } = req.params;
+      const meterValues = await db.collection('ocppMeterValues')
+        .find({ chargerId: chargePointId })
+        .sort({ timestamp: -1 })
+        .limit(100)
+        .toArray();
+      
+      res.json(meterValues);
+    } catch (error) {
+      console.error('❌ Error fetching meter values:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Broadcast message to all ESP devices
+  app.post('/api/ocpp/broadcast', async (req, res) => {
+    try {
+      const { action, payload } = req.body;
+
+      if (!action) {
+        return res.status(400).json({ error: 'Action is required' });
+      }
+
+      const results = await ocppWebSocketServer.broadcastToAllESP(action, payload);
+      
+      res.json({ 
+        message: 'Broadcast sent to all ESP devices', 
+        results,
+        totalDevices: results.length,
+        successfulDeliveries: results.filter(r => r.success).length
+      });
+    } catch (error) {
+      console.error('❌ Broadcast error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  console.log('✅ All API endpoints initialized with single-port OCPP integration');
+  
+}).catch(err => {
+  console.error("❌ MongoDB connection failed:", err);
+  process.exit(1);
+});
+
+const PORT = process.env.PORT || 5000;
+
+// Use the server instance instead of app.listen
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🔌 OCPP WebSocket available at ws://localhost:${PORT}/ocpp`);
+  console.log(`📡 HTTP API available at http://localhost:${PORT}`);
+});
