@@ -12,13 +12,14 @@ import path from 'path';
 import OCPPWebSocketServer from './ocpp/ocpp-websocket-server.js';
 import OCPPCMSConfig from './ocpp/ocpp-cms-config.js';
 import connectDB from './config/mongo.js';
+import OCPPPCBIntegration from './ocpp/ocpp-pcb-integration.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // ===== PCB INTEGRATION API ENDPOINTS =====
 // Add this import at the top of your server.js
-const OCPPPCBIntegration = require('./ocpp/ocpp-pcb-integration');
+// const OCPPPCBIntegration = require('./ocpp/ocpp-pcb-integration');
 
 // Add this after your database connection
 let pcbIntegration = null;

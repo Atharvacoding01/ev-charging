@@ -1,7 +1,7 @@
 // ===== OCPP CMS CONFIGURATION MANAGER =====
 // backend/ocpp/ocpp-cms-config.js
 
-const { ObjectId } = require('mongodb');
+import { MongoClient, ObjectId } from 'mongodb';
 
 class OCPPCMSConfig {
   constructor(database) {
@@ -395,4 +395,4 @@ class OCPPCMSConfig {
   }
 }
 
-module.exports = OCPPCMSConfig;
+export default OCPPCMSConfig;
