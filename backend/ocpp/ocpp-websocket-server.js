@@ -8,6 +8,8 @@ import https from 'https';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import OCPPCMSConfig from './ocpp-cms-config.js'; // adjust path as needed
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,7 +17,7 @@ const __dirname = dirname(__filename);
 class OCPPWebSocketServer {
   constructor(database, httpServer = null) {
     this.db = database;
-    this.cms = new OCPPCMSConfig(database);
+    this.config = new OCPPCMSConfig(database);
     this.wss = null;
     this.httpServer = httpServer; // HTTP server to attach WebSocket to
     this.chargePoints = new Map();
