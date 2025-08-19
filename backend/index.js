@@ -1315,7 +1315,7 @@ connectDB().then((db) => {
   });
 
   // ========== CHARGING CONTROL ENDPOINTS ==========
-  // Enhanced start charging with OCPP support
+  // Enhanced start charging with OCPP support + ESP notification
   app.post('/api/start-charging/:id', async (req, res) => {
     try {
       const id = req.params.id;
@@ -1344,6 +1344,7 @@ connectDB().then((db) => {
 
       // Try OCPP remote start if charge point is connected
       let ocppStarted = false;
+      let espNotified = false;
       if (order.charger && order.charger.chargerId) {
         try {
           const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
@@ -1355,6 +1356,28 @@ connectDB().then((db) => {
               1   // Connector ID
             );
             console.log(`${ocppStarted ? '✅' : '❌'} OCPP remote start ${ocppStarted ? 'successful' : 'failed'}`);
+
+            // Always send ESP custom start notification as well
+            try {
+              const startMessage = {
+                command: 'START_CHARGING',
+                orderId: id,
+                customerName: `${order.firstName} ${order.lastName}`,
+                customerPhone: order.phone,
+                timestamp: new Date().toISOString(),
+                paymentConfirmed: true
+              };
+
+              await ocppWebSocketServer.sendCustomMessage(
+                order.charger.chargerId,
+                'ChargingStart',
+                startMessage
+              );
+              espNotified = true;
+              console.log('✅ ESP device notified of charging start');
+            } catch (notifyError) {
+              console.error('⚠️ Failed to send start notification to ESP:', notifyError);
+            }
           } else {
             console.log('⚠️ Charge point not connected via OCPP, proceeding with manual start');
           }
@@ -1372,16 +1395,18 @@ connectDB().then((db) => {
             chargingStartedAt: new Date(),
             status: 'charging',
             ocppControlled: ocppStarted,
+            espNotified: espNotified,
             updatedAt: new Date()
           }
         }
       );
 
-      console.log(`✅ Charging started for order: ${id} (OCPP: ${ocppStarted ? 'Yes' : 'No'})`);
+      console.log(`✅ Charging started for order: ${id} (OCPP: ${ocppStarted ? 'Yes' : 'No'}, ESP Notified: ${espNotified ? 'Yes' : 'No'})`);
       res.json({ 
         message: "Charging started", 
         orderId: id,
-        ocppControlled: ocppStarted
+        ocppControlled: ocppStarted,
+        espNotified: espNotified
       });
     } catch (err) {
       console.error('❌ Error starting charging:', err);
@@ -1391,11 +1416,41 @@ connectDB().then((db) => {
 
   app.post('/api/charging-status', async (req, res) => {
     try {
-      const { orderId, startTime, endTime, durationSeconds, amountPaid, powerKW } = req.body;
+      const { orderId, startTime, endTime, durationSeconds, amountPaid, powerKW, stopReason } = req.body;
       if (!orderId || !ObjectId.isValid(orderId)) return res.status(400).json({ error: "Invalid data" });
 
       const order = await orders.findOne({ _id: new ObjectId(orderId) });
       if (!order) return res.status(404).json({ error: "Order not found" });
+
+      // Notify ESP to stop (best-effort)
+      let espStopNotified = false;
+      if (order.charger && order.charger.chargerId) {
+        try {
+          const chargePointStatus = await ocppWebSocketServer.getChargePointStatus(order.charger.chargerId);
+          if (chargePointStatus && chargePointStatus.isConnected) {
+            const stopMessage = {
+              command: 'STOP_CHARGING',
+              orderId: orderId,
+              customerName: `${order.firstName} ${order.lastName}`,
+              customerPhone: order.phone,
+              chargingDuration: durationSeconds,
+              finalAmount: parseFloat(amountPaid) || 0,
+              powerDelivered: parseFloat(powerKW) || 0,
+              stopReason: stopReason || 'user_requested',
+              timestamp: new Date().toISOString()
+            };
+            await ocppWebSocketServer.sendCustomMessage(
+              order.charger.chargerId,
+              'ChargingStop',
+              stopMessage
+            );
+            espStopNotified = true;
+            console.log('✅ ESP device notified of charging stop');
+          }
+        } catch (notifyError) {
+          console.error('⚠️ Failed to send stop notification to ESP:', notifyError);
+        }
+      }
 
       const chargingData = {
         orderId: new ObjectId(orderId),
@@ -1408,6 +1463,8 @@ connectDB().then((db) => {
         userEmail: order.email,
         userName: `${order.firstName} ${order.lastName}`,
         charger: order.charger,
+        stopReason: stopReason || 'user_requested',
+        espStopNotified: espStopNotified,
         createdAt: new Date()
       };
 
@@ -1421,13 +1478,14 @@ connectDB().then((db) => {
             chargingCompletedAt: new Date(),
             status: 'completed',
             finalAmount: parseFloat(amountPaid) || 0,
+            espStopNotified: espStopNotified,
             updatedAt: new Date()
           }
         }
       );
 
-      console.log(`✅ Charging session completed for order: ${orderId}`);
-      res.status(200).json({ message: "Charging session saved", id: result.insertedId });
+      console.log(`✅ Charging session completed for order: ${orderId} (ESP Stop Notified: ${espStopNotified ? 'Yes' : 'No'})`);
+      res.status(200).json({ message: "Charging session saved", id: result.insertedId, espStopNotified });
     } catch (err) {
       console.error('❌ Error saving charging session:', err);
       res.status(500).json({ error: "Internal error" });

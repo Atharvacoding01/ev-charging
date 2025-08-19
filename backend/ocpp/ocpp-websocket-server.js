@@ -509,17 +509,21 @@ initializeCustomMessageHandlers() {
     console.log(`✅ ESP charging start confirmed from ${chargePointId}:`, payload);
     
     // Store confirmation in database
-    if (payload.orderId) {
-      await this.db.collection('orders').updateOne(
-        { _id: new ObjectId(payload.orderId) },
-        {
-          $set: {
-            espStartConfirmed: true,
-            espStartConfirmedAt: new Date(),
-            espMessage: payload.message || 'Charging started successfully'
+    try {
+      if (payload.orderId) {
+        await this.db.collection('orders').updateOne(
+          { _id: new (require('mongodb').ObjectId)(payload.orderId) },
+          {
+            $set: {
+              espStartConfirmed: true,
+              espStartConfirmedAt: new Date(),
+              espMessage: payload.message || 'Charging started successfully'
+            }
           }
-        }
-      );
+        );
+      }
+    } catch (e) {
+      console.error('⚠️ Failed to persist ESP start confirmation:', e);
     }
 
     return {
@@ -533,19 +537,23 @@ initializeCustomMessageHandlers() {
     console.log(`✅ ESP charging stop confirmed from ${chargePointId}:`, payload);
     
     // Store confirmation in database
-    if (payload.orderId) {
-      await this.db.collection('orders').updateOne(
-        { _id: new ObjectId(payload.orderId) },
-        {
-          $set: {
-            espStopConfirmed: true,
-            espStopConfirmedAt: new Date(),
-            espFinalMessage: payload.message || 'Charging stopped successfully',
-            espFinalDuration: payload.actualDuration,
-            espFinalPower: payload.actualPower
+    try {
+      if (payload.orderId) {
+        await this.db.collection('orders').updateOne(
+          { _id: new (require('mongodb').ObjectId)(payload.orderId) },
+          {
+            $set: {
+              espStopConfirmed: true,
+              espStopConfirmedAt: new Date(),
+              espFinalMessage: payload.message || 'Charging stopped successfully',
+              espFinalDuration: payload.actualDuration,
+              espFinalPower: payload.actualPower
+            }
           }
-        }
-      );
+        );
+      }
+    } catch (e) {
+      console.error('⚠️ Failed to persist ESP stop confirmation:', e);
     }
 
     return {
