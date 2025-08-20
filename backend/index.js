@@ -70,6 +70,82 @@ connectDB().then((db) => {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  // Idempotent PCB device provisioning: register if new, otherwise refresh credentials
+  app.post('/api/pcb/provision-device', async (req, res) => {
+    try {
+      const deviceData = req.body || {};
+
+      if (!deviceData.chargePointId || !deviceData.hardwareId) {
+        return res.status(400).json({
+          error: 'chargePointId and hardwareId are required'
+        });
+      }
+
+      // Check if device exists by hardwareId or chargePointId
+      const existingDevice = await pcbIntegration.pcbDevices.findOne({
+        $or: [
+          { hardwareId: deviceData.hardwareId },
+          { chargePointId: deviceData.chargePointId }
+        ],
+        isActive: { $ne: false }
+      });
+
+      let resultPayload;
+      if (existingDevice) {
+        // Refresh credentials for existing device
+        const refreshed = await pcbIntegration.refreshDeviceCredentials(existingDevice.deviceId);
+
+        resultPayload = {
+          message: 'Existing device found. Credentials refreshed successfully',
+          device: {
+            deviceId: existingDevice.deviceId,
+            chargePointId: existingDevice.chargePointId,
+            deviceName: existingDevice.deviceName,
+            status: existingDevice.status,
+            isOnline: existingDevice.isOnline,
+            lastHeartbeat: existingDevice.lastHeartbeat,
+            firmwareVersion: existingDevice.firmwareVersion,
+            capabilities: existingDevice.capabilities,
+            createdAt: existingDevice.createdAt
+          },
+          credentials: refreshed
+        };
+      } else {
+        // Register a new device
+        const registered = await pcbIntegration.registerPCBDevice(deviceData);
+        resultPayload = {
+          message: 'PCB device registered successfully',
+          device: {
+            deviceId: registered.deviceId,
+            chargePointId: deviceData.chargePointId,
+            deviceName: deviceData.deviceName || `PCB-${registered.deviceId}`
+          },
+          connectionUrl: registered.connectionUrl,
+          credentials: registered.credentials
+        };
+      }
+
+      // Optionally persist credentials to an order if provided
+      if (deviceData.orderId && ObjectId.isValid(deviceData.orderId)) {
+        await orders.updateOne(
+          { _id: new ObjectId(deviceData.orderId) },
+          {
+            $set: {
+              ocppCredentials: resultPayload,
+              credentialsGeneratedAt: new Date(),
+              updatedAt: new Date()
+            }
+          }
+        );
+      }
+
+      return res.json(resultPayload);
+    } catch (error) {
+      console.error('❌ Error provisioning PCB device:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
   // Add to your backend server.js
 app.post('/api/orders/:orderId/credentials', async (req, res) => {
   try {
