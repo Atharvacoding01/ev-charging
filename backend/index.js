@@ -126,19 +126,7 @@ connectDB().then((db) => {
         };
       }
 
-      // Optionally persist credentials to an order if provided
-      if (deviceData.orderId && ObjectId.isValid(deviceData.orderId)) {
-        await orders.updateOne(
-          { _id: new ObjectId(deviceData.orderId) },
-          {
-            $set: {
-              ocppCredentials: resultPayload,
-              credentialsGeneratedAt: new Date(),
-              updatedAt: new Date()
-            }
-          }
-        );
-      }
+      // Note: Order credential saving removed as per user request
 
       return res.json(resultPayload);
     } catch (error) {
@@ -1188,6 +1176,12 @@ connectDB().then((db) => {
   // Mollie webhook - simplified without reservations
   app.post('/api/mollie-webhook', async (req, res) => {
     try {
+      // Ensure req.body exists and has the expected structure
+      if (!req.body || typeof req.body !== 'object') {
+        console.error("❌ Mollie webhook: Invalid request body", req.body);
+        return res.status(400).json({ error: "Invalid request body" });
+      }
+      
       const { id: paymentId } = req.body;
       
       if (!paymentId) {
