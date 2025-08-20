@@ -3,6 +3,7 @@ const { ObjectId } = require('mongodb');
 const connectDB = require('./config/mongo');
 const cors = require('cors');
 const https = require('https');
+const http = require('http');
 
 // OCPP imports
 const OCPPWebSocketServer = require('./ocpp/ocpp-websocket-server');
@@ -541,7 +542,9 @@ connectDB().then((db) => {
 
   // Initialize OCPP services
   ocppCMS = new OCPPCMSConfig(db);
-  ocppWebSocketServer = new OCPPWebSocketServer(8080, db);
+  // Create HTTP server and attach both Express and WebSocket on same port
+  const server = http.createServer(app);
+  ocppWebSocketServer = new OCPPWebSocketServer(server, db);
   
   // Start OCPP WebSocket Server
   ocppWebSocketServer.initialize().then(() => {
@@ -915,7 +918,9 @@ connectDB().then((db) => {
       console.log('🔄 Restarting OCPP WebSocket Server...');
       
       await ocppWebSocketServer.stop();
-      ocppWebSocketServer = new OCPPWebSocketServer(8080, db);
+      ocppWebSocketServer = new OCPPWebSocketServer(server, db);
+      await ocppWebSocketServer.stop();
+      ocppWebSocketServer = new OCPPWebSocketServer(server, db);
       await ocppWebSocketServer.initialize();
       
       res.json({ message: 'WebSocket server restarted successfully' });
@@ -2179,12 +2184,13 @@ app.post('/api/esp-webhook/:chargePointId', async (req, res) => {
 
   console.log('✅ All API endpoints initialized');
   
+  // Start HTTP server (Express + WebSocket on same port)
+  const PORT = process.env.PORT || 5000;
+  server.listen(PORT, () => {
+    console.log(`🚀 Server (HTTP + WebSocket) running on port ${PORT}`);
+  });
+
 }).catch(err => {
   console.error("❌ MongoDB connection failed:", err);
   process.exit(1);
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
 });

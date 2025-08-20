@@ -6,8 +6,13 @@ const { v4: uuidv4 } = require('uuid');
 const OCPPCMSConfig = require('./ocpp-cms-config');
 
 class OCPPWebSocketServer {
-  constructor(port, database) {
-    this.port = port;
+  constructor(portOrServer, database) {
+    // Allow either a port number or an existing HTTP server instance
+    this.server = (typeof portOrServer === 'object' && portOrServer && typeof portOrServer.on === 'function')
+      ? portOrServer
+      : null;
+    this.port = (typeof portOrServer === 'number') ? portOrServer : null;
+
     this.db = database;
     this.cms = new OCPPCMSConfig(database);
     this.wss = null;
@@ -611,20 +616,31 @@ async initialize() {
     this.initializeCustomMessageHandlers();
     
     // Start WebSocket server
-    this.wss = new WebSocket.Server({ 
-      port: this.port,
-      path: '/',
-      verifyClient: (info) => {
-        console.log(`🔌 WebSocket connection attempt from: ${info.origin || 'unknown'}`);
-        return true;
-      }
-    });
+    if (this.server) {
+      this.wss = new WebSocket.Server({ 
+        server: this.server,
+        path: '/',
+        verifyClient: (info) => {
+          console.log(`🔌 WebSocket connection attempt from: ${info.origin || 'unknown'}`);
+          return true;
+        }
+      });
+    } else {
+      this.wss = new WebSocket.Server({ 
+        port: this.port,
+        path: '/',
+        verifyClient: (info) => {
+          console.log(`🔌 WebSocket connection attempt from: ${info.origin || 'unknown'}`);
+          return true;
+        }
+      });
+    }
 
     this.wss.on('connection', (ws, req) => {
       this.handleConnection(ws, req);
     });
 
-    console.log(`🚀 OCPP WebSocket Server started on port ${this.port}`);
+    console.log(`🚀 OCPP WebSocket Server started ${this.server ? 'on existing HTTP server' : `on port ${this.port}`}`);
     
     // Start heartbeat monitoring
     this.startHeartbeatMonitoring();
